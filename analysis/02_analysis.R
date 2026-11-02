@@ -359,4 +359,124 @@ ggsave("output/fig3_vulnerable-owner-profile.png", p3, width = 8, height = 5, dp
 saveRDS(p3, "output/fig3_vulnerable-owner-profile.rds")
 cat("F done: tab6, tab7(+b), tab8, fig3\n")
 
+## =============================================================================
+## G. Imputed rent / Eigenmietwert (dim 1)
+## =============================================================================
+## Owners live rent-free: add an imputed net rent to income and re-assess.
+NET_YIELD <- 0.03                                  # net imputed yield (gross ~4% minus ~1% upkeep)
+imp_rent <- function(yield) {
+  ir_m  <- yield * d$home_value / 12               # monthly household imputed rent
+  ir_eq <- ifelse(!is.na(d$equiv_factor) & d$equiv_factor>0, ir_m / d$equiv_factor, NA_real_)
+  eqir  <- d$eqinc + ifelse(is.na(ir_eq), 0, ir_eq)
+  list(eqinc_ir = eqir, poor_ir = as.integer(eqir < 2279))
+}
+ir <- imp_rent(NET_YIELD)
+d$eqinc_ir <- ir$eqinc_ir; d$poor_ir <- ir$poor_ir; d$log_eqinc_ir <- log(pmax(d$eqinc_ir,1))
+desG <- mkdes(d[!is.na(d$w), ])
+wp <- function(des, v) 100*as.numeric(coef(svymean(as.formula(paste0("~",v)), des, na.rm=TRUE))[1])
+pov_own_before <- wp(subset(desG, owner==1), "strain");  pov_own_after <- wp(subset(desG, owner==1), "poor_ir")
+pov_ten_before <- wp(subset(desG, owner==0), "strain");  pov_ten_after <- wp(subset(desG, owner==0), "poor_ir")
+# of income-poor owners: share NOT poor once imputed rent counts
+exit <- 100*as.numeric(coef(svymean(~I(poor_ir==0), subset(desG, owner==1 & strain==1), na.rm=TRUE))[2])
+# sensitivity: poverty-exit share at 2% and 4%
+exit_sens <- sapply(c(0.02,0.04), function(y){ p <- imp_rent(y)$poor_ir
+  dd <- d; dd$poor_ir <- p; dss <- subset(mkdes(dd[!is.na(dd$w),]), owner==1 & strain==1)
+  100*as.numeric(coef(svymean(~I(poor_ir==0), dss, na.rm=TRUE))[2]) })
+# M4 owner coefficient with imputed-rent income instead of cash income
+dIR <- d[complete.cases(d[, c(setdiff(base_vars,"log_eqinc"),"log_eqinc_ir")]) & !is.na(d$owner), ]
+fIR <- svyglm(as.formula(paste("swls", sub("log_eqinc","log_eqinc_ir", sub("TEN","owner",f4)))), design = mkdes(dIR))
+ir_owncoef <- ci_tab(fIR, "^owner$", "M4 mit imput. Miete")
+tab9 <- data.frame(
+  metric = c("Armutsquote Eigentümer vor imput. Miete (%)","Armutsquote Eigentümer nach imput. Miete (%)",
+             "Armutsquote Mieter vor (%)","Armutsquote Mieter nach (%)",
+             "einkommensarme Eigentümer, die mit imput. Miete NICHT mehr arm sind (%)",
+             "   dasselbe bei 2% Rendite (%)","   dasselbe bei 4% Rendite (%)",
+             "Eigentümer-Koeffizient M4 mit imput.-Miete-Einkommen"),
+  value = round(c(pov_own_before, pov_own_after, pov_ten_before, pov_ten_after,
+                  exit, exit_sens[1], exit_sens[2], ir_owncoef$est), 2))
+write.csv(tab9, "output/tab9_imputed-rent.csv", row.names = FALSE)
+pgir <- data.frame(Wohnform=rep(c("Eigentümer","Mieter"),each=2),
+                   Einkommen=rep(c("Bareinkommen","+ imput. Miete"),2),
+                   Armut=c(pov_own_before,pov_own_after,pov_ten_before,pov_ten_after))
+pgir$Einkommen <- factor(pgir$Einkommen, levels=c("Bareinkommen","+ imput. Miete"))
+p4 <- ggplot(pgir, aes(Wohnform, Armut, fill=Einkommen)) +
+  geom_col(position=position_dodge(.7), width=.6) +
+  geom_text(aes(label=sprintf("%.1f%%",Armut)), position=position_dodge(.7), vjust=-0.4, size=3.3) +
+  scale_fill_manual(values=c(Bareinkommen=GREY, `+ imput. Miete`=BLUE), name=NULL) +
+  labs(x=NULL, y="Einkommensarmutsquote (%)",
+       title="Eigenmietwert: Eigentümer-Armut ist grösstenteils Papier-Armut",
+       subtitle=sprintf("Armutsquote vor/nach Anrechnung einer imputierten Netto-Miete (%.0f%% des Hauswerts), 65+, gewichtet", 100*NET_YIELD)) +
+  theme_minimal(base_size=11) + theme(legend.position="bottom", panel.grid.major.x=element_blank())
+ggsave("output/fig4_imputed-rent.png", p4, width=7.5, height=5, dpi=300); saveRDS(p4,"output/fig4_imputed-rent.rds")
+cat("G done: tab9, fig4\n")
+
+## =============================================================================
+## H. EL: Kenntnis / Antrag bei den vulnerablen Eigentümern (dim 2)
+## =============================================================================
+grp_el <- function(sub, label){ des <- mkdes(sub)
+  data.frame(gruppe=label, n=nrow(sub),
+             n_knowel=sum(!is.na(sub$knowel)), kennt_EL=round(wp(des,"knowel"),1),
+             n_consid=sum(!is.na(sub$considerel)), hat_erwogen=round(wp(des,"considerel"),1)) }
+tab10 <- rbind(
+  grp_el(d[which(d$owner==1 & d$strain==1 & (is.na(d$el_receipt)|d$el_receipt==0) & !is.na(d$w)), ],
+         "einkommensarme Eigentümer ohne EL"),
+  grp_el(d[which(d$owner==0 & d$strain==1 & (is.na(d$el_receipt)|d$el_receipt==0) & !is.na(d$w)), ],
+         "einkommensarme Mieter ohne EL"))
+write.csv(tab10, "output/tab10_EL-knowledge.csv", row.names = FALSE)
+cat("H done: tab10\n")
+
+## =============================================================================
+## I. Dekomposition: welche finanzielle Dimension frisst den Eigentumsvorteil (dim 3)
+## =============================================================================
+steps <- list(
+  `M3 (ohne Finanzen)` = f3,
+  `+ Einkommen`        = paste(f3, "+ log_eqinc"),
+  `+ auskommen`        = paste(f3, "+ log_eqinc + endsmeet_f"),
+  `+ Vermögen`         = paste(f3, "+ log_eqinc + endsmeet_f + wealth_tert"),
+  `+ Liquidität (=M4)` = f4)
+dec <- do.call(rbind, Map(function(f,nm){
+  fit <- svyglm(as.formula(paste("swls", sub("TEN","owner",f))), design = desO)
+  c0 <- ci_tab(fit, "^owner$", nm); data.frame(schritt=nm, owner_b=round(c0$est,3), se=round(c0$se,3)) },
+  steps, names(steps)))
+dec$drop <- c(NA, round(-diff(dec$owner_b),3))
+write.csv(dec, "output/tab11_decomposition.csv", row.names = FALSE)
+cat("I done: tab11\n")
+
+## =============================================================================
+## J. Pflege & Aging in Place (dim 8) — exploratativ
+## =============================================================================
+care_by <- function(v){ b <- as.data.frame(svyby(as.formula(paste0("~",v)), ~tenure3,
+                         subset(des_all,!is.na(tenure3)), svymean, na.rm=TRUE)); setNames(round(100*b[,2],1), b$tenure3) }
+tab12 <- data.frame(leistung=c("informelle Pflege erhalten","formelle/Spitex-Pflege erhalten","Pflege-Zusatzversicherung"),
+                    do.call(rbind, lapply(c("infcare","comcare","careinsur"), care_by)))
+# among the health-limited (GALI): formal vs informal care by tenure
+desLim <- subset(des_all, gali_any==1 & !is.na(tenure3))
+tab12b <- data.frame(leistung=c("(mit Einschränkung) informelle Pflege","(mit Einschränkung) formelle Pflege"),
+                     rbind(care_by_lim_inf <- {b<-as.data.frame(svyby(~infcare,~tenure3,desLim,svymean,na.rm=TRUE)); setNames(round(100*b[,2],1),b$tenure3)},
+                           {b<-as.data.frame(svyby(~comcare,~tenure3,desLim,svymean,na.rm=TRUE)); setNames(round(100*b[,2],1),b$tenure3)}))
+write.csv(rbind(setNames(tab12,c("leistung","tenant","owner_noRE","owner_plusRE")),
+                setNames(tab12b,c("leistung","tenant","owner_noRE","owner_plusRE"))),
+          "output/tab13_care.csv", row.names = FALSE)
+cat("J done: tab13\n")
+
+## =============================================================================
+## K. Feinere Geografie: Bergregion + zusammengefasste BFS-9 (dim 9)
+## =============================================================================
+geo_by <- function(byvar){
+  o <- as.data.frame(svyby(~owner,  as.formula(paste0("~",byvar)), subset(desF,!is.na(owner)),  svymean, na.rm=TRUE))
+  p <- as.data.frame(svyby(~strain, as.formula(paste0("~",byvar)), subset(desFO,!is.na(strain)), svymean, na.rm=TRUE))
+  data.frame(gruppe=o[[byvar]], owner_pct=round(100*o$owner,1),
+             poor_owner_pct=round(100*p$strain[match(o[[byvar]], p[[byvar]])],1)) }
+tab14 <- rbind(cbind(dim="BFS-9 (zusammengefasst)", geo_by("bfs_coll")),
+               cbind(dim="Bergregion", { g<-geo_by("mountain"); g$gruppe<-factor(g$gruppe,0:1,c("Nicht-Bergregion","Bergregion")); g }))
+write.csv(tab14, "output/tab14_geography.csv", row.names = FALSE)
+# robustness: M4 owner with collapsed BFS + mountain instead of degurba
+dK <- dO[!is.na(dO$bfs_coll), ]
+fK <- svyglm(as.formula(paste("swls", sub("degurba","bfs_coll + mountain", sub("TEN","owner",f4)))), design=mkdes(dK))
+ck <- ci_tab(fK,"^owner$","(vii) M4 BFS-9(coll)+Bergregion")
+write.csv(rbind(read.csv("output/tab5_robustness.csv"),
+                data.frame(spec=ck$model, term="owner", est=round(ck$est,3), se=round(ck$se,3))),
+          "output/tab5_robustness.csv", row.names=FALSE)
+cat("K done: tab14 (+tab5 row)\n")
+
 cat("\nALL DONE. Outputs in output/.\n")

@@ -76,6 +76,26 @@ d <- raw %>% transmute(
   pil2_home = as.integer(na_neg(fi_2pil4home_22) == 1),          # 2nd-pillar capital for the home
   pil2_any  = as.integer(na_neg(fi_cashout2pil_22) == 1),        # any 2nd-pillar withdrawal
   el_receipt= as.integer(na_neg(fi_incsourc_22_el) == 1),        # Ergänzungsleistungen receipt
+  knowel    = as.integer(na_neg(fi_knowel_22) == 1),             # knows about EL (filtered item)
+  considerel= as.integer(na_neg(fi_considerel_22) == 1),         # ever applied/considered EL (filtered)
+  ## care / aging in place
+  infcare   = as.integer(na_neg(cs_getinfcare_22) == 1),         # received informal care, last 12 mo
+  comcare   = as.integer(na_neg(cs_getcomcare_22) == 1),         # received formal/community care
+  careinsur = as.integer(na_neg(mu_careinsur_22) == 1),          # supplementary care insurance (filtered)
+  ## geography extras
+  mountain  = as.integer(na_neg(env_ismountainregion_22) == 1),  # mountain region
+  bfs_coll  = factor(dplyr::case_when(
+                 na_neg(env_BFStypo9_22) == 11 ~ "Grosszentrum",
+                 na_neg(env_BFStypo9_22) %in% c(12,13) ~ "übrige städtisch",
+                 na_neg(env_BFStypo9_22) %in% c(21,22,23) ~ "periurban",
+                 na_neg(env_BFStypo9_22) %in% c(31,32) ~ "ländlich zentral",
+                 na_neg(env_BFStypo9_22) == 33 ~ "ländlich peripher"),
+               levels = c("Grosszentrum","übrige städtisch","periurban","ländlich zentral","ländlich peripher")),
+  ## home value (for imputed rent): reported amount, fallback to category midpoint
+  realest_amt = na_neg(fi_valrealest_22),
+  realest_cat = dplyr::case_when(na_neg(fi_valrestestcat_22)==0~125000, na_neg(fi_valrestestcat_22)==1~375000,
+                                 na_neg(fi_valrestestcat_22)==2~750000, na_neg(fi_valrestestcat_22)==3~1100000,
+                                 TRUE~NA_real_),
   ## health
   srh       = na_neg(ph_srh_22),                                 # 0 poor .. 4 excellent
   srh_poor  = as.integer(na_neg(ph_srh_22) <= 1),
@@ -96,8 +116,8 @@ d <- raw %>% transmute(
 ## ---- join SILVER income / wealth / poverty (on Respondent_ID) ---------------
 sil <- readRDS(SILVER) %>%
   transmute(id = as.character(pid),
-            eqinc = income_eq, wealth_net = hh_wealth_net, wealth_fin = hh_wealth_fin,
-            poor_silver = poor)
+            eqinc = income_eq, hh_income = hh_income,
+            wealth_net = hh_wealth_net, wealth_fin = hh_wealth_fin, poor_silver = poor)
 d <- left_join(d, sil, by = "id")
 match_rate <- mean(d$id %in% sil$id)
 cat(sprintf("Silver join match rate: %.1f%% (%d of %d)\n", 100*match_rate, sum(d$id %in% sil$id), nrow(d)))
@@ -109,8 +129,17 @@ d <- d %>% mutate(
   strain      = poor_silver,
   strain_subj = as.integer((!is.na(endsmeet) & endsmeet <= 1) | (!is.na(liquidity) & liquidity == 0)),
   eqinc_tert  = cut(eqinc, quantile(eqinc, c(0,1/3,2/3,1), na.rm = TRUE),
-                    labels = c("low","mid","high"), include.lowest = TRUE)
+                    labels = c("low","mid","high"), include.lowest = TRUE),
+  ## home value for imputed rent: amount -> category midpoint; owners w/o value -> owner median; non-owners 0
+  home_value  = ifelse(!is.na(realest_amt), realest_amt, realest_cat),
+  equiv_factor= ifelse(!is.na(eqinc) & eqinc > 0, hh_income / eqinc, NA_real_)  # hh_income / equiv income
 )
+
+## finalise home value: owners with still-missing value -> weighted owner median;
+## non-owners -> 0 (imputed rent applies to the self-occupied home of owners)
+own_med <- median(d$home_value[d$owner == 1], na.rm = TRUE)
+d$home_value <- ifelse(d$owner == 1 & is.na(d$home_value), own_med,
+                       ifelse(d$owner == 0, 0, d$home_value))
 
 ## ---- restrict to 65+ and save ----------------------------------------------
 d65 <- d %>% filter(!is.na(age) & age >= 65)
