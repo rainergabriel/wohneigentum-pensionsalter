@@ -1,28 +1,35 @@
 # =============================================================================
-# GITHUB = R-ANALYSEN ONLY. Everything else stays local: no microdata, no
-# generated outputs (figures/tables/PDF), no writeups/drafts/handoffs/literature.
-# Only analysis/*.R, the .Rproj, README and this .gitignore are tracked.
+# GITHUB = R-Analysen + Report-PDF + aggregierte Abbildungen.
+# Lokal bleiben: Mikrodaten, CSV-Tabellen, .rds, sowie WRITING/HANDOFF/LITERATURE/
+# RESEARCH/human tasks und Office-Dokumente.
 # =============================================================================
 
 # ignore everything by default …
 /*
-# … then allow only the R analysis code + minimal repo files
+# … then allow the repo basics
 !/.gitignore
 !/README.md
 !/analysis/
+
+# inside analysis/: ignore all, then re-allow code + report + figures
 analysis/*
 !analysis/*.R
+!analysis/*.Rmd
 !analysis/*.Rproj
+!analysis/Wohnen_Hauptergebnisse.pdf
+!analysis/output/
+analysis/output/*
+!analysis/output/*.png
 
-# never, under any circumstances
-*.rds
-*.RData
+# never, under any circumstances (defense in depth)
 *.sav
 *.dta
+*.rds
+*.RData
 *.csv
 *.xlsx
-*.pdf
-*.png
+*.xls
+*.docx
 .DS_Store
 .Rhistory
 .Renviron
