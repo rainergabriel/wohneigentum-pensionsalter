@@ -1,7 +1,7 @@
 ---
 title: "Sonnen- und Schattenseiten des Eigenheims im Rentenalter"
-subtitle: "Eigentum, Wohlbefinden und finanzielle Risiken im Alter — Hauptergebnisse (Swiss Aging Survey 2022, 65+)"
-author: "Rainer Gabriel & Selina · Analyse-Lauf 2026-10-30"
+subtitle: "Eigentum und Lebenszufriedenheit im Alter — objektive Ressourcen vs. subjektive Lage (Swiss Aging Survey 2022, 65+) · Revision 2"
+author: "Rainer Gabriel & Selina · Analyse-Lauf 2026-11-09"
 date: "`r format(Sys.Date(), '%d.%m.%Y')`"
 output:
   pdf_document:
@@ -21,252 +21,184 @@ header-includes:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
                       fig.align = "center", out.width = "92%", fig.pos = "H")
 library(knitr)
-rd <- function(f) read.csv(file.path("output", f), check.names = FALSE)
+rd  <- function(f) read.csv(file.path("output", f), check.names = FALSE)
 fig <- function(x) include_graphics(file.path("output", x))
-t2 <- rd("tab2_nested-models.csv"); t3 <- rd("tab3_interaction.csv")
-t4c <- rd("tab4c_asset-rich-income-poor.csv"); t2b <- rd("tab2b_full-controls.csv")
-t6 <- rd("tab6_bfs9.csv"); t7 <- rd("tab7_vulnerable-owner-profile.csv"); t8 <- rd("tab8_cashpoor-core.csv")
-t9 <- rd("tab9_imputed-rent.csv"); t10 <- rd("tab10_EL-knowledge.csv")
-t11 <- rd("tab11_decomposition.csv"); t14 <- rd("tab14_geography.csv")
-ownM0 <- 1.65; ownM4 <- 0.38; intp <- t3$p[grepl("owner:strain", t3$term)][1]
-v <- function(m) t4c$value[t4c$metric == m]
-w8 <- function(m) t8$value[grepl(m, t8$metric)][1]
-w9 <- function(m) t9$value[grepl(m, t9$metric)][1]
+t1 <- rd("tab1_descriptives.csv"); t2 <- rd("tab2_nested-models.csv")
+t2b <- rd("tab2b_full-controls.csv"); t3 <- rd("tab3_interaction.csv")
+t4 <- rd("tab4_owner-burden.csv"); t5 <- rd("tab5_robustness.csv"); t11 <- rd("tab11_decomposition.csv")
+Ncommon <- t2$N[1]
+## helpers to pull coefficients
+own_ten <- function(m, grp) { r <- t2[t2$model==m & t2$term==grp, ]; r }
+noRE <- "tenure3owner, no other RE"; plusRE <- "tenure3owner + other RE"
+b_bin <- function(step) t11$owner_b[t11$schritt==step]      # binary-owner coef at a decomposition step
+intp4 <- t3$p[t3$block=="M4 + owner×strain" & grepl("owner:strain", t3$term)][1]
+intp5 <- t3$p[t3$block=="M5 + owner×strain" & grepl("owner:strain", t3$term)][1]
+mi <- function(sp) { r <- t5[grepl(sp, t5$spec, fixed=TRUE), ]; r$est[1] }
+g1 <- function(v, col) t1[[col]][t1$variable==v]
 ```
 
 Diese Kurzauswertung fasst die **Hauptergebnisse** zum Zusammenhang von **Wohnform
 und Lebenszufriedenheit** bei den über 65-Jährigen in der Schweiz zusammen (Swiss
-Aging Survey 2022, n = 3'313, gewichtet). Lebenszufriedenheit = Diener-SWLS (5–35).
-"Finanzielle Anspannung" = Einkommensarmut gemäss Silver-Datensatz (äquivalisiertes
-Einkommen unter der Armutsgrenze).
+Aging Survey 2022, 65+; gewichtet). Lebenszufriedenheit = Diener-SWLS (5–35).
+Die Revision 2 trennt **objektive Ressourcen** (Einkommen, Vermögen, Hauswert,
+imputierte Miete, Hypothek/Belehnungsgrad — alles CHF-Beträge bzw. Ja/Nein-Fakten)
+sauber von der **subjektiven Einschätzung** (mit dem Einkommen auskommen; unerwartete
+Ausgabe decken). Letztere wird nach Gabriel & Hümbelin (2026) *nie* zur Klassierung
+von Anspannung benutzt, sondern erst im letzten Modellblock (M5) als Erklärung geprüft.
 
 \begin{mdframed}[backgroundcolor=black!5,linewidth=0pt]
 \textbf{Kernbefunde}
 \begin{itemize}
-  \item Im Alter \textbf{besitzt die Mehrheit} (57\% Eigentümer, 43\% Mieter).
-  Eigentümer sind finanziell deutlich komfortabler gestellt.
-  \item Eigentümer berichten eine \textbf{höhere Lebenszufriedenheit} (roh
-  +1,6 Punkte). \textbf{Dieser Vorteil verschwindet jedoch}, sobald die finanzielle
-  Lage kontrolliert wird (voll kontrolliert: +0,4 Punkte, nicht signifikant).
-  \item \textbf{Das Eigenheim puffert nicht:} finanziell angespannte Eigentümer
-  sind gleich (un)zufrieden wie angespannte Mieter (Interaktion n.s., p = `r sprintf('%.2f', intp)`).
-  \item \textbf{Die Schattenseite:} rund \textbf{`r v("ALL 65+: owner & income-poor & no EL %")`\% aller 65+}
-  sind Eigentümer, einkommensarm und beziehen \emph{keine} Ergänzungsleistungen —
-  vermögend auf dem Papier (Median-Nettovermögen ≈ CHF `r format(v("median net wealth, income-poor owners (CHF)"), big.mark="'")`),
-  aber knapp im Portemonnaie (liquide nur ≈ CHF `r format(v("median financial wealth, income-poor owners (CHF)"), big.mark="'")`).
-  \item \textbf{Es ist eine Renten-, keine Finanzierungsgeschichte:} die einkommensarmen
-  Eigentümer sind überdurchschnittlich \textbf{Frauen, tief gebildet, Tessin/ländlich} —
-  und haben ihr Eigenheim \emph{nicht} häufiger mit Pensionskassenkapital finanziert.
-  `r w8("still carrying a mortgage")`\% von ihnen tragen aber noch eine \textbf{Hypothek}
-  (Tragbarkeit im Alter als zweiter Policy-Hebel).
-  \item \textbf{Eigenmietwert-Linse:} rechnet man den mietfreien Wohnvorteil als Einkommen,
-  \textbf{fällt die Eigentümer-Armut von `r w9("Eigentümer vor")` \% auf `r w9("Eigentümer nach")` \%} —
-  grösstenteils eine Papier-Armut. Der illiquide Teil (cash-arm) und die EL-Mechanik bleiben aber real.
+  \item Eigentümer sind \textbf{objektiv deutlich besser gestellt} (Median-Nettovermögen
+  Mieter CHF `r format(g1("Nettovermögen Median (CHF)","Miete"), big.mark="'")` vs.
+  Eigentümer ohne weitere Immobilie CHF `r format(g1("Nettovermögen Median (CHF)","Eig_ohne"), big.mark="'")`)
+  und \textbf{subjektiv zuversichtlicher} („kommt leicht aus": `r g1("auskommen: leicht (%)","Miete")`\%
+  Mieter vs. `r g1("auskommen: leicht (%)","Eig_ohne")`\% / `r g1("auskommen: leicht (%)","Eig_mit")`\% Eigentümer).
+  \item Eigentümer berichten eine \textbf{höhere Lebenszufriedenheit} (binär roh
+  +`r sprintf('%.2f', b_bin("M3 (ohne Finanzen)")+0.6)` Punkte). Dieser Vorteil
+  \textbf{übersteht die objektiven Ressourcen} (M4) weitgehend, \textbf{schliesst sich
+  aber mit der subjektiven Lage} (M5): Eigentümer ohne weitere Immobilie
+  +`r sprintf('%.2f', own_ten("M4",noRE)$est)` (M4) $\rightarrow$
+  +`r sprintf('%.2f', own_ten("M5",noRE)$est)` (M5, n.s.).
+  \item \textbf{Es ist die \emph{erlebte} finanzielle Leichtigkeit, nicht das Ressourcen-Niveau:}
+  in der Dekomposition schrumpft der Eigentümer-Koeffizient fast nur beim Schritt
+  „mit dem Einkommen auskommen" (−`r sprintf('%.2f', t11$drop[t11$schritt=="+ auskommen"])`),
+  kaum über Einkommen oder Vermögen.
+  \item \textbf{Das Eigenheim puffert nicht:} die Interaktion Eigentum × (objektive)
+  Einkommensarmut ist nicht signifikant (p = `r sprintf('%.2f', intp4)`).
+  \item \textbf{Innerhalb der Eigentümer} zählt die Immobilien\emph{belastung}: Eigentümer
+  mit \textbf{weiterer Immobilie} sind zufriedener (+`r sprintf('%.2f', t4$est[t4$block=="(f) weitere Immobilie"])`),
+  eine hohe laufende Hypothekenlast geht nicht mit tieferer Zufriedenheit einher.
+  \item \textbf{Multiple Imputation (m = 20)} als Primärspezifikation des Vermögensblocks
+  (≈40\% Item-Nonresponse) bestätigt das Muster: Eigentum M4 = +`r sprintf('%.2f', mi("MI m=20, M4 owner"))`,
+  M5 = +`r sprintf('%.2f', mi("MI m=20, M5 owner"))`.
 \end{itemize}
 \end{mdframed}
 
-# Ein Land der Mieter — aber nicht im Alter
+# Wer besitzt — und wie steht er da?
 
-Unter den 65-Jährigen und Älteren besitzen rund **57 %** ein selbstbewohntes
-Eigenheim. Eigentümer sind im Schnitt älter, häufiger männlich und leben seltener
-allein (allein lebend: 49 % der Mieter vs. 24 % / 16 % der Eigentümer). Rund ein
-Drittel der Eigentümer hat (Teile des) Eigenheim(s) mit **Pensionskassenkapital**
-finanziert. Eigentum ist zugleich ein Marker finanziellen Komforts: "problemlos
-mit dem Einkommen auskommen" sagen 38 % der Mieter, aber 53 % / 71 % der Eigentümer
-(Abb. 1).
+Rund die Hälfte der 65-Jährigen und Älteren besitzt ein selbstbewohntes Eigenheim;
+ein Teil davon zusätzlich weitere Immobilien. Eigentümer sind im Schnitt jünger,
+seltener Frauen, seltener allein lebend und höher gebildet als Mieter. Vor allem aber
+stehen sie **finanziell komfortabler** da — über alle objektiven Masse hinweg (Tab. 1):
+höheres äquivalisiertes Einkommen, mehr Finanz- und Nettovermögen, und (bei den
+Eigentümern mit weiterer Immobilie) deutlich höhere Hauswerte. Zugleich sind sie
+**subjektiv zuversichtlicher**: fast alle Eigentümer könnten eine unerwartete Ausgabe
+decken, während rund ein Viertel der Mieter das verneint.
 
-```{r fig0, fig.cap="Wohnform nach Sprachregion und Urbanisierungsgrad (gewichtet, 65+)."}
-fig("fig0_tenure-by-region.png")
+```{r tab1}
+t1x <- t1[, c("variable","Gesamt","Miete","Eig_ohne","Eig_mit")]
+kable(t1x, booktabs = TRUE, row.names = FALSE,
+      col.names = c("Merkmal (gewichtet)","Gesamt","Miete","Eigentum o. w. RE","Eigentum m. w. RE"),
+      caption = sprintf("Deskriptiv nach Wohnform: Soziodemografie/Gesundheit, objektive Ressourcen, subjektive Einschätzung (SAS 2022, 65+, gewichtet; CHF als gewichtete Mediane; N ungewichtet = %s).", format(sum(as.numeric(t1$Gesamt[t1$variable=="N (ungewichtet)"])), big.mark="'")))
 ```
 
-# Die Sonnenseite — und warum der Hebel das Geld ist
+# Der Eigentumsvorteil: objektive Ressourcen verengen ihn, die subjektive Lage schliesst ihn
 
-Eigentümer berichten eine höhere Lebenszufriedenheit (SWLS 27,0 Mieter → 28,2 →
-29,2 Eigentümer). Schätzt man den Eigentums­vorteil schrittweise — zunächst roh,
-dann unter Kontrolle von Soziodemografie, Gesundheit, Region und zuletzt der
-finanziellen Lage —, so **schrumpft der Koeffizient von +1,65 auf +0,38** und ist
-voll kontrolliert **nicht mehr signifikant** (Abb. 2). Entscheidend ist der letzte
-Schritt: die **finanzielle Situation**. Eigentum "wirkt" also, weil Eigentümer im
-Schnitt finanziell komfortabel leben — nicht wegen des Grundbucheintrags selbst.
+Eigentümer berichten eine höhere Lebenszufriedenheit. Schätzt man den Vorteil
+schrittweise — roh (M0), dann unter Kontrolle von Soziodemografie (M1), Gesundheit
+(M2), Region (M3), **objektiven Ressourcen** (M4) und zuletzt der **subjektiven
+Einschätzung** (M5) —, bleibt er über die objektiven Ressourcen hinweg bemerkenswert
+**stabil** und verschwindet erst mit dem subjektiven Block (Abb. 1, Tab. 2). Für
+Eigentümer ohne weitere Immobilie: +`r sprintf('%.2f', own_ten("M3",noRE)$est)` (M3)
+$\rightarrow$ +`r sprintf('%.2f', own_ten("M4",noRE)$est)` (M4) $\rightarrow$
++`r sprintf('%.2f', own_ten("M5",noRE)$est)` (M5, nicht signifikant). Eigentümer **mit**
+weiterer Immobilie behalten dagegen auch in M5 einen Vorteil
+(+`r sprintf('%.2f', own_ten("M5",plusRE)$est)`, p = `r sprintf('%.3f', own_ten("M5",plusRE)$p)`).
 
-```{r fig1, fig.cap="Der Eigentümer-Koeffizient auf die Lebenszufriedenheit über fünf Modellstufen (M0 roh bis M4 voll kontrolliert, gewichtet). Die Balken sind 95\\%-Konfidenzintervalle."}
+```{r fig1, fig.cap="Eigentümer-Koeffizient (binär) auf die Lebenszufriedenheit über sechs Modellstufen (M0 roh bis M5). Der gestrichelte Trenner markiert den Übergang von den objektiven Ressourcen (bis M4) zur subjektiven Einschätzung (M5). Fehlerbalken: 95\\%-KI."}
 fig("fig1_owner-coef.png")
 ```
 
 ```{r tab2}
-tt <- t2[, c("model","term","est","lcl","ucl","p")]
+tt <- t2[, c("model","term","est","se","lcl","ucl","p","est_MI","se_MI")]
 tt$term <- gsub("tenure3", "", tt$term)
+tt[is.na(tt)] <- NA
 kable(tt, booktabs = TRUE, row.names = FALSE, digits = 2,
-      col.names = c("Modell","Wohnform (vs. Mieter)","b","KI u.","KI o.","p"),
-      caption = "Geschachtelte OLS-Modelle: Wohnform-Koeffizienten auf SWLS (gewichtet, n = 2'504).")
+      col.names = c("Modell","Wohnform (vs. Mieter)","b","SE","KI u.","KI o.","p","b (MI)","SE (MI)"),
+      caption = sprintf("Geschachtelte gewichtete OLS auf SWLS: Wohnform-Koeffizienten, M0–M5. CC = Complete-Case (gemeinsame Stichprobe n = %s); MI = multiple Imputation (m=20), nur für die Modelle mit Vermögensblock (M4, M5).", format(Ncommon, big.mark="'")))
 ```
 
-Die vollständigen Kontrollvariablen des Endmodells (M4) zeigen, was die
-Lebenszufriedenheit im Alter trägt (Tab. 2): klar **die finanzielle Lage** (von
-*einige Schwierigkeiten* +3,1 bis *problemlos* +6,0 gegenüber grossen Schwierigkeiten),
-sowie **allein leben** (−1,2), **Depressivität** (−2,0), **schlechte Gesundheit**
-(SRH −1,4) und die **italienische Sprachregion** (−1,9). Frauen berichten bei
-Kontrolle eine höhere Zufriedenheit (+1,0).
-
-```{r tab2b}
-lab <- c(female="Frau", civstatwidowed="verwitwet", civstatdivorced="geschieden",
-  civstatsingle="ledig", alone="allein lebend", edu3compulsory="oblig. Schule",
-  edu3tertiary="tertiär", swiss="Schweizer:in", gali_any="Aktivitätseinschränkung",
-  dep_score="Depressivität (0–4)", srh_poor="Gesundheit schlecht/mittel",
-  lingregFrench="franz. Region", lingregItalian="ital. Region",
-  log_eqinc="log(Äquiv.-Einkommen)", liquidity="Liquiditätspuffer",
-  `endsmeet_fdifficulty`="auskommen: einige Schwierigk.",
-  `endsmeet_ffairly easily`="auskommen: ziemlich problemlos",
-  `endsmeet_feasily`="auskommen: problemlos",
-  `owner`="Eigentümer")
-tc <- t2b[, c("term","est","lcl","ucl","p")]
-tc <- tc[!grepl("wealth_tert|degurba|age$|haskids", tc$term), ]
-tc$term <- ifelse(tc$term %in% names(lab), lab[tc$term], tc$term)
-kable(tc, booktabs = TRUE, row.names = FALSE, digits = 2,
-      col.names = c("Kontrollvariable","b","KI u.","KI o.","p"),
-      caption = "Endmodell M4 — Kontrollvariablen (gewichtete OLS auf SWLS; Auswahl, Wohnform-Koeffizienten in Tab. 1).")
-```
-
-**Was genau frisst den Vorteil?** Zerlegt man den Rückgang von M3 (ohne Finanzen,
-+1,07) auf M4 (+0,40) schrittweise, läuft er fast vollständig über das subjektive
-**„mit dem Einkommen auskommen" (−0,52 von −0,67)** — nicht über das Einkommens- oder
-Vermögens*niveau* (Tab. 3). Es ist also die *erlebte* finanzielle Leichtigkeit, die
-den Eigentumsvorteil trägt.
+**Was genau verengt den Vorteil?** Die Dekomposition (Tab. 3) zerlegt den Rückgang
+des (binären) Eigentümer-Koeffizienten von M3 bis M5. Einkommen
+(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ Einkommen"])`) und Finanzvermögen
+(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ Finanzvermögen"])`) nehmen nur wenig weg;
+die imputierte Miete praktisch nichts; Hypothek/Belehnungsgrad heben den Koeffizienten
+sogar leicht (die hypothekenfreien Eigentümer sind die Referenz). Der eine grosse
+Schritt ist **„mit dem Einkommen auskommen"**
+(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ auskommen"])`). Es ist also die
+*erlebte* finanzielle Leichtigkeit, die den Eigentumsvorteil trägt — nicht das
+objektive Ressourcen-Niveau.
 
 ```{r tab-dec}
 td <- t11[, c("schritt","owner_b","drop")]
 kable(td, booktabs = TRUE, row.names = FALSE, digits = 2,
       col.names = c("Modellschritt","Eigentümer-b","Rückgang"),
-      caption = "Dekomposition: Rückgang des Eigentümer-Koeffizienten je Finanzvariable (gewichtet).")
+      caption = "Dekomposition des (binären) Eigentümer-Koeffizienten von M3 bis M5 (gewichtet). Objektive Ressourcen zuerst, subjektive Einschätzung zuletzt.")
 ```
 
-# Die Schattenseite — das Eigenheim puffert nicht
+# Das Eigenheim puffert nicht gegen Einkommensarmut
 
-Puffert das Eigenheim gegen finanzielle Engpässe? **Nein.** Die Interaktion
-Eigentum × finanzielle Anspannung ist praktisch null (p = `r sprintf('%.2f', intp)`).
-In jeder Stufe des "Mit dem Einkommen auskommen" liegen Eigentümer und Mieter
-**gleichauf** — der angespannte Eigentümer ist so (un)zufrieden wie der angespannte
-Mieter (Abb. 3).
+Puffert das Eigenheim gegen **objektive** finanzielle Anspannung (Einkommensarmut
+gemäss Silver-Datensatz)? **Nein.** Die Interaktion Eigentum × Einkommensarmut ist in
+M4 wie in M5 nicht signifikant (p = `r sprintf('%.2f', intp4)` bzw.
+`r sprintf('%.2f', intp5)`). Einkommensarme Eigentümer sind so (un)zufrieden wie
+einkommensarme Mieter — der Abstand zwischen arm und nicht-arm ist bei beiden Wohnformen
+ähnlich gross (Abb. 2).
 
-```{r fig2, fig.cap="Mittlere Lebenszufriedenheit nach Wohnform und finanzieller Lage (gewichtet, 95\\%-KI). Die Linien liegen übereinander: kein Eigenheim-Puffer."}
+```{r fig2, fig.cap="Mittlere Lebenszufriedenheit in den vier Zellen Wohnform × (objektive) Einkommensarmut (gewichtet, 95\\%-KI). Parallele Niveaus: kein Eigenheim-Puffer."}
 fig("fig2_owner-x-strain.png")
 ```
 
-# Vermögend auf dem Papier, knapp im Portemonnaie
+# Innerhalb der Eigentümer: Immobilienbelastung oder -vorteil?
 
-Eine Minderheit der Eigentümer gerät finanziell unter Druck — und fällt durch das
-EL-Netz. Die zentralen Zahlen:
+Unter den Eigentümern selbst (gewichtete OLS auf SWLS, mit dem M4-Kontrollsatz; Tab. 4)
+zeigt sich **kein** Zufriedenheitsabschlag für eine laufende Hypothek oder einen hohen
+Belehnungsgrad an sich. Wer eine **weitere Immobilie** besitzt, ist etwas zufriedener
+(+`r sprintf('%.2f', t4$est[t4$block=="(f) weitere Immobilie"])`,
+p = `r sprintf('%.3f', t4$p[t4$block=="(f) weitere Immobilie"])`) — ein Vermögens-, kein
+Belastungssignal. Der Pensionskassenbezug fürs Eigenheim und die imputierte Netto-Miete
+hängen nicht signifikant mit der Zufriedenheit zusammen. Die Immobilie wirkt im Alter
+somit eher über den **Vermögens-** als über den **Belastungskanal**.
 
-```{r tab4c}
-t4cx <- t4c
-t4cx$metric <- c("Eigentümer einkommensarm (%)","…davon ohne EL-Bezug (%)",
-                 "alle 65+: Eigentümer + einkommensarm + kein EL (%)",
-                 "Median Nettovermögen, einkommensarme Eigentümer (CHF)",
-                 "Median liquides Vermögen, einkommensarme Eigentümer (CHF)")
-t4cx$value <- ifelse(t4cx$value > 1000, format(round(t4cx$value), big.mark = "'", trim = TRUE),
-                     format(t4cx$value, trim = TRUE))
-kable(t4cx, booktabs = TRUE, row.names = FALSE, col.names = c("Kennzahl","Wert"),
-      caption = "Vermögend, aber einkommensarm — und ausserhalb der EL.")
+```{r tab4}
+t4x <- t4[, c("block","term","est","se","p","n")]
+kable(t4x, booktabs = TRUE, row.names = FALSE, digits = 2,
+      col.names = c("Fokus","Term","b","SE","p","n"),
+      caption = "Innerhalb der Eigentümer 65+: SWLS auf Hypothek, Belehnungsgrad, Hypothekenlast, imputierte Netto-Miete, PK-Bezug und weitere Immobilie (je ein Modell plus gemeinsames Modell; M4-Kontrollen, gewichtet).")
 ```
 
-**Wer sind diese einkommensarmen Eigentümer?** (Abb. 4). Vor allem **Frauen**
-(`r t7$poor_owner[t7$merkmal=="female"]`\% vs. `r t7$nonpoor_owner[t7$merkmal=="female"]`\%),
-Personen mit nur **obligatorischer Schulbildung**
-(`r t7$poor_owner[t7$merkmal=="edu_comp"]`\% vs. `r t7$nonpoor_owner[t7$merkmal=="edu_comp"]`\%)
-und aus der **italienischen Sprachregion**
-(`r t7$poor_owner[t7$merkmal=="italian"]`\% vs. `r t7$nonpoor_owner[t7$merkmal=="italian"]`\%).
-**Nicht** aber häufiger verwitwet oder allein lebend — die "einsame Witwe im grossen
-Haus" ist *nicht* das Muster. Es ist eine Geschichte tiefer Erwerbs- und
-Rentenbiografien (tiefe Bildung, oft Frauen, Tessin/ländlich) bei gleichzeitigem
-— oft geerbtem oder lange gehaltenem — Eigenheim.
-
-```{r fig3, fig.cap="Merkmalsanteile einkommensarmer vs. übriger Eigentümer (65+, gewichtet)."}
-fig("fig3_vulnerable-owner-profile.png")
+```{r fig3, fig.cap="Mittlere Lebenszufriedenheit nach Belehnungsgrad (LTV) und Hypothekenlast (\\% Einkommen), Eigentümer 65+ (gewichtet, 95\\%-KI)."}
+fig("fig3_owner-burden.png")
 ```
-
-**War es der Pensionskassenbezug?** Nein. Einkommensarme Eigentümer haben ihr
-Eigenheim **nicht häufiger** mit 2.-Säule-Kapital finanziert als übrige Eigentümer
-(`r w8("2nd pillar for the home")`\% vs. `r t7$nonpoor_owner[t7$merkmal=="pil2_home"]`\%).
-Der Kapitalbezug erklärt die Einkommensarmut im Alter also nicht.
-
-**Haus-reich, cash-arm — die eigentliche Risikogruppe.** Rund
-**`r w8("ALL 65")`\% aller 65+** sind Eigentümer, einkommensarm *und* haben weniger als
-CHF 10'000 liquide Mittel. `r w8("<10k liquid")`\% der einkommensarmen Eigentümer
-sitzen auf einem solchen Liquiditätsengpass — Vermögen im Stein, nichts im
-Portemonnaie.
-
-# Die Eigenmietwert-Linse: zum grossen Teil eine Papier-Armut
-
-Wie „arm" sind diese Eigentümer wirklich? Eigentümer wohnen mietfrei — ein
-geldwerter Vorteil, der im Bareinkommen nicht erscheint. Rechnet man ihnen eine
-imputierte Netto-Miete an (3 % des Hauswerts), **fällt die Einkommensarmut der
-Eigentümer von `r w9("Eigentümer vor")` % auf `r w9("Eigentümer nach")` %** (Mieter
-unverändert `r w9("Mieter vor")` %); **`r w9("NICHT mehr arm")` % der einkommensarmen
-Eigentümer sind dann nicht mehr arm** (Abb. 5, Tab. 5). Die gemessene Einkommensarmut
-der Eigentümer ist damit **grösstenteils eine Papier-Armut** auf der Konsumseite.
-
-```{r fig5, fig.cap="Einkommensarmutsquote vor/nach Anrechnung einer imputierten Netto-Miete (3\\% des Hauswerts), 65+, gewichtet."}
-fig("fig4_imputed-rent.png")
-```
-
-Zwei Einschränkungen halten die Schattenseite real: Der Mietwert ist **illiquide** —
-man kann ihn nicht ausgeben; Liquiditätsklemme und EL-Mechanik bleiben bestehen. Und
-rund ein Viertel bleibt auch mit imputierter Miete arm. Der Eigentumsvorteil auf die
-Lebenszufriedenheit bleibt mit imputiertem Einkommen ebenfalls ~0 (Koeffizient
-`r w9("Koeffizient")`).
-
-```{r tab9}
-t9x <- t9[1:5, ]; t9x$value <- format(t9x$value, trim = TRUE)
-kable(t9x, booktabs = TRUE, row.names = FALSE, col.names = c("Kennzahl","Wert"),
-      caption = "Eigenmietwert: Armutsquoten vor/nach imputierter Miete (gewichtet, 65+).")
-```
-
-**EL: Struktur, nicht Unwissen.** Die einkommensarmen Eigentümer ohne EL **kennen**
-die Ergänzungsleistungen gleich gut wie einkommensarme Mieter ohne EL
-(`r t10$kennt_EL[1]` % vs. `r t10$kennt_EL[2]` %), haben aber kaum je einen Antrag
-erwogen (`r t10$hat_erwogen[1]` % vs. `r t10$hat_erwogen[2]` %). Der Nichtbezug ist
-damit kein Informationsproblem, sondern Folge des **EL-Vermögensfreibetrags** — das
-selbstbewohnte Eigenheim zählt als Vermögen (kleine Fallzahlen, vorsichtig zu lesen).
-
-# Hypothek im Rentenalter — ein zweiter Policy-Hebel
-
-Nicht nur die EL-Vermögensschwelle: Rund **acht von zehn Eigentümern 65+ tragen noch
-eine Hypothek** — auch die einkommensarmen (`r w8("still carrying a mortgage")`\%).
-Bei dünnem Einkommen und fehlendem Puffer wird die **Tragbarkeit** zum Risiko
-(Amortisation, Zinsänderung, Eigenmietwert-Debatte). Geografisch häufen sich die
-einkommensarmen Eigentümer in **ländlich-peripheren** Gemeinden
-(`r t6$poor_owner_pct[t6$bfs9=="ländl. peripher"]`\%) und in **Bergregionen**
-(`r t14$poor_owner_pct[t14$gruppe=="Bergregion"]`\% vs.
-`r t14$poor_owner_pct[t14$gruppe=="Nicht-Bergregion"]`\% ausserhalb — fast doppelt so
-hoch; Tab. 6). Die Frage für Politik und Immobilienwirtschaft ist damit nicht
-"Eigentum ja/nein", sondern **wie illiquides Wohnvermögen im Alter Wohlbefinden tragen
-kann** — Verrentung, Reverse Mortgage, EL-Regeln zum selbstbewohnten Eigenheim,
-Amortisationsvorschriften.
-
-```{r tab6}
-t6x <- t6; names(t6x) <- c("Gemeindetyp (BFS-9)","Eigentumsquote %","…davon einkommensarm %")
-kable(t6x, booktabs = TRUE, row.names = FALSE,
-      caption = "Eigentumsquote und Anteil einkommensarmer Eigentümer nach BFS-Gemeindetypologie 2012 (9 Typen).")
-```
-
-*Explorativ (Aging in Place):* Eigentümer beziehen weniger informelle und
-formelle/Spitex-Pflege als Mieter, haben aber häufiger eine Pflege-Zusatz\-versicherung
-— auch unter den gesundheitlich Eingeschränkten (Details in den Output-Tabellen; Confound:
-Eigentümer gesünder und häufiger mit Partner).
 
 # Robustheit
 
-Der kleine, nicht signifikante Eigentumseffekt (voll kontrolliert) und das fehlende
-Puffern bestätigen sich durchgehend: ordinale Logit-Schätzung auf die SWLS-Kategorie,
-ungewichtete Schätzung, getrennt nach Altersgruppen (65–79 / 80+), mit der
-**BFS-9-Typologie** statt DEGURBA (Eigentum M4 = +0,44) sowie bei **multipler
-Imputation (m = 20)** (Eigentum M4 = +0,36, SE 0,25). Auch die Interaktion bleibt in
-allen Spezifikationen nicht signifikant.
+Das Muster — Eigentumsvorteil, der die objektiven Ressourcen übersteht und sich an der
+subjektiven Lage schliesst, ohne Puffereffekt — bestätigt sich durchgehend (Tab. 5):
+**multiple Imputation (m = 20)** als Primärspezifikation des Vermögensblocks (Eigentum
+M4 = +`r sprintf('%.2f', mi("MI m=20, M4 owner"))`, M5 = +`r sprintf('%.2f', mi("MI m=20, M5 owner"))`),
+ordinale Logit-Schätzung, ungewichtete Schätzung, getrennt nach Altersgruppen
+(65–79 vs. 80+), sowie mit der **BFS-9-Typologie** und Bergregion statt DEGURBA. Die
+Sensitivität gegenüber dem imputierten Mietertrag (2–4 %), dem Hypothekar-Referenzzins
+(1,25 vs. 2,5 %) und der Hauswert-Definition für Eigentümer mit weiterer Immobilie ist
+gering. Die Interaktion bleibt in allen Spezifikationen nicht signifikant.
+
+```{r tab5}
+t5x <- t5[, c("spec","term","est","se")]
+kable(t5x, booktabs = TRUE, row.names = FALSE, digits = 3,
+      col.names = c("Spezifikation","Term","b","SE"),
+      caption = "Robustheit: Eigentümer-Koeffizient (bzw. Interaktion/Belastung) unter alternativen Spezifikationen. MI ist die Primärspezifikation des Vermögensblocks.")
+```
 
 \footnotesize
-*Daten: Swiss Aging Survey 2022, Release 2025-09-16, 65+ (n = 3'313), gewichtet
-(Designgewicht, Schichtung). Einkommen, Vermögen und Armutsflag aus dem
-altersdata-Silver-Layer (auf diese Release neu gebaut, Definitionen unverändert).
-Die Kernzahlen und die vollständigen Tabellen liegen in `analysis/output/`;
-Details in `WRITING/results-notes_2026-10-30.md`. Hinweis: dwelling type,
-Wohndauer, Wohnkostenbelastung und Umzugsabsicht sind in der SAS nicht erhoben.*
+*Daten: Swiss Aging Survey 2022, ReleaseB; 65+ (analytische n = 3'313; gemeinsame
+Complete-Case-Stichprobe der Modelle n = `r format(Ncommon, big.mark="'")`), gewichtet
+(Designgewicht, Schichtung). Einkommen, Vermögen, Hauswert (`hh_wealth_re`),
+Hypothekarsumme (`hh_mortgage`) und Armutsflag aus dem altersdata-Silver-Layer
+(`sas_2026-11-09.rds`, Definitionen unverändert). Imputierte Miete wird im Modell
+innerhalb der Eigentümer zentriert, um die Kollinearität mit der Wohnform-Dummy zu
+vermeiden (D-IMPRENT-CENTER). Objektiv = CHF-Beträge und Ja/Nein-Fakten; subjektiv =
+„auskommen" / „unerwartete Ausgabe". Poverty-, Eigenmietwert- und EL-Material ist
+Paper-2-Material und liegt in `output/_paper2/`. Hinweis: dwelling type, Wohndauer,
+Wohnkostenbelastung und Umzugsabsicht sind in der SAS nicht erhoben.*
