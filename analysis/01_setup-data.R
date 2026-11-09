@@ -4,16 +4,17 @@
 ## Builds data/wohnen_working.rds for the housing / residential-well-being paper
 ## (see WRITING/analysis-plan_2026-10-30.md and HANDOFF/).
 ##
-## SOURCES (both OUTSIDE this repo — microdata is never committed):
-##  (A) SAS 2022 raw release matching codebook 2025-08-05:
-##      data_sas22_ReleaseB_2025-09-16.sav  (SAS_DATA_PATH)
-##  (B) SAS SILVER, canonical build (warehouse setup_sas.R, D-SASBASE):
-##      silver/sas/sas_2026-11-09.rds  (SAS_SILVER)
-##      → equivalised income, net/financial wealth, income-poverty flag, and (new,
-##        D-HOUSINGWEALTH) hh_wealth_re + hh_mortgage (CHF amounts). NOT re-derived
-##        here, so the paper shares Rainer's canonical SAS definitions. Joined on
-##        Respondent_ID; the two ReleaseB exports are byte-identical (ids 1..4457),
-##        so the join match rate is asserted ~100 %.
+## SOURCE — a SINGLE raw file (OUTSIDE this repo; microdata is never committed):
+##   SAS 2022 raw release matching codebook 2025-08-05:
+##   data_sas22_ReleaseB_2025-09-16.sav  (SAS_DATA_PATH)
+##
+## SILVER variables (equivalised income, net/financial wealth, real-estate value,
+## mortgage sum, income-poverty flag) are DERIVED IN-REPO from that raw file by
+## `00_build-silver.R` (build_silver_sas) — the warehouse silver logic vendored
+## verbatim (helpers + prep merge + build_core_sas, incl. hh_wealth_re/hh_mortgage).
+## So the whole pipeline is 100% reproducible from the raw `.sav` alone, with NO
+## dependency on the (separate, local-only) altersdata warehouse. The in-repo build
+## was verified value-for-value against the warehouse `sas_2026-11-09.rds`.
 ##
 ## NOTE: SAS has no dwelling-type / years-in-dwelling / rent-burden / move-intent
 ## items — those parts of the plan cannot be done with this survey (logged in
@@ -21,11 +22,10 @@
 ## =============================================================================
 
 suppressWarnings(suppressMessages({library(haven); library(dplyr)}))
+source("00_build-silver.R")   # in-repo silver derivation (build_silver_sas); see its header
 
 RAW <- Sys.getenv("SAS_DATA_PATH", unset =
   "/Users/gabn/Library/CloudStorage/GoogleDrive-rainer.gabriel@gmail.com/My Drive/Documents/Work/ACTIVE/ZHAW/3_Research-Projects/Altersmonitoring Pro Senectute/4_Erhebung/datenbereinigung/data_sas22_ReleaseB_2025-09-16.sav")
-SILVER <- Sys.getenv("SAS_SILVER", unset =
-  "/Users/gabn/Library/CloudStorage/GoogleDrive-rainer.gabriel@gmail.com/My Drive/Documents/Work/ACTIVE/ZHAW/3.1 DATA WAREHOUSE/altersdata/silver/sas/sas_2026-11-09.rds")
 
 dir.create("data", showWarnings = FALSE)
 na_neg <- function(x) { x <- suppressWarnings(as.numeric(zap_labels(x))); x[x < 0] <- NA; x }
@@ -133,11 +133,12 @@ d <- raw %>% transmute(
   strata_22 = as.character(strata_22)                            # canton-stratum code, e.g. "ZH-1"
 )
 
-## ---- join SILVER income / wealth / poverty (on Respondent_ID) ---------------
-## NEW (D-HOUSINGWEALTH): also pull hh_wealth_re (all real estate, CHF) and
-## hh_mortgage (sum of all mortgages, CHF) — the amounts the burden/LTV/imputed-
-## net-rent analyses need. hh_wealth_net is still fin + re − mortgage (unchanged).
-sil <- readRDS(SILVER) %>%
+## ---- SILVER income / wealth / poverty — DERIVED IN-REPO from the same raw -----
+## build_silver_sas() (00_build-silver.R) reproduces the warehouse silver variables
+## from the raw release, so the pipeline is self-contained. Includes hh_wealth_re
+## (all real estate, CHF) and hh_mortgage (sum of all mortgages, CHF) — the amounts
+## the burden/LTV/imputed-net-rent analyses need. hh_wealth_net = fin + re − mortgage.
+sil <- build_silver_sas(raw) %>%
   transmute(id = as.character(pid),
             eqinc = income_eq, hh_income = hh_income,
             wealth_net = hh_wealth_net, wealth_fin = hh_wealth_fin,
@@ -145,8 +146,8 @@ sil <- readRDS(SILVER) %>%
             poor_silver = poor)
 d <- left_join(d, sil, by = "id")
 match_rate <- mean(d$id %in% sil$id)
-logline(sprintf("Silver join match rate: %.1f%% (%d of %d)", 100*match_rate, sum(d$id %in% sil$id), nrow(d)))
-stopifnot("Silver join match rate < 99% — check Step 0 / IDs" = match_rate > 0.99)
+logline(sprintf("Silver (in-repo build) join match rate: %.1f%% (%d of %d)", 100*match_rate, sum(d$id %in% sil$id), nrow(d)))
+stopifnot("Silver join match rate < 99% — check 00_build-silver.R / IDs" = match_rate > 0.99)
 
 ## =============================================================================
 ## OBJECTIVE financial resources (CHF amounts & yes/no facts) — D-* in brief

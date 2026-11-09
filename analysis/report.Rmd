@@ -195,8 +195,9 @@ kable(t5x, booktabs = TRUE, row.names = FALSE, digits = 3,
 *Daten: Swiss Aging Survey 2022, ReleaseB; 65+ (analytische n = 3'313; gemeinsame
 Complete-Case-Stichprobe der Modelle n = `r format(Ncommon, big.mark="'")`), gewichtet
 (Designgewicht, Schichtung). Einkommen, Vermögen, Hauswert (`hh_wealth_re`),
-Hypothekarsumme (`hh_mortgage`) und Armutsflag aus dem altersdata-Silver-Layer
-(`sas_2026-11-09.rds`, Definitionen unverändert). Imputierte Miete wird im Modell
+Hypothekarsumme (`hh_mortgage`) und Armutsflag werden **im Repository selbst** aus dem
+Rohdatensatz abgeleitet (`00_build-silver.R`, reproduziert die altersdata-Silver-
+Definitionen 1:1) — die Auswertung ist damit ohne das Data-Warehouse voll reproduzierbar. Imputierte Miete wird im Modell
 innerhalb der Eigentümer zentriert, um die Kollinearität mit der Wohnform-Dummy zu
 vermeiden (D-IMPRENT-CENTER). Objektiv = CHF-Beträge und Ja/Nein-Fakten; subjektiv =
 „auskommen" / „unerwartete Ausgabe". Poverty-, Eigenmietwert- und EL-Material ist
