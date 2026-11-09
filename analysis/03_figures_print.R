@@ -1,8 +1,10 @@
 ## 03  Print figures for the manuscript (German labels, no titles, "abfedern" not "puffern").
-## Reads the ggplot .rds objects written by 02_analysis.R; writes WRITING/manuscript/figures/Abbildung1-3.png (300 dpi).
+## Reads the ggplot .rds objects written by 02_analysis.R / 02c_pk-vorbezug.R; writes
+## WRITING/manuscript/figures/Abbildung1-4.png (300 dpi). Abbildung 4 = PK-Vorbezug.
 ## Font: set FONT to "Arial" on a machine that has it.
 suppressMessages({library(ggplot2); library(grid)})
 P <- "output/"   # run from analysis/
+dir.create("../WRITING/manuscript/figures", recursive = TRUE, showWarnings = FALSE)
 FONT <- "DejaVu Sans"
 th <- theme_minimal(base_size = 10, base_family = FONT) +
   theme(panel.grid.minor = element_blank(), panel.grid.major.x = element_blank(),
@@ -58,4 +60,20 @@ p3 <- ggplot(d3, aes(xl, swls)) +
   scale_y_continuous(limits = c(27, 31), breaks = 27:31) +
   labs(x = NULL, y = "Lebenszufriedenheit (SWLS, Mittelwert, 95 %-KI)") + th
 ggsave("../WRITING/manuscript/figures/Abbildung3.png", p3, width = 16, height = 8, units = "cm", dpi = 300, bg = "white")
+
+## ---- Abbildung 4 (PK-Vorbezug fürs Eigenheim) ----
+d4 <- as.data.frame(lapply(as.data.frame(readRDS(paste0(P, "fig_pkvorbezug.rds"))$data), function(v) if (is.factor(v)) as.character(v) else v), stringsAsFactors = FALSE)
+lab4 <- c("noch mit Hypothek" = "noch mit Hypothek", "auskommen: leicht" = "kommt leicht mit dem\nEinkommen aus",
+          "kann unerwartete Ausgabe decken" = "kann unerwartete\nAusgabe decken", "Einkommensarm" = "einkommensarm")
+d4$metric <- factor(lab4[d4$metric], levels = rev(unname(lab4)))
+d4$grp <- factor(ifelse(grepl("^kein", d4$grp), "ohne PK-Vorbezug", "mit PK-Vorbezug fürs Eigenheim"),
+                 levels = c("ohne PK-Vorbezug", "mit PK-Vorbezug fürs Eigenheim"))
+p4 <- ggplot(d4, aes(val, metric, fill = grp)) +
+  geom_col(position = position_dodge(.62), width = .58) +
+  geom_text(aes(label = sprintf("%.0f %%", val)), position = position_dodge(.62), hjust = -0.12, size = 2.8, family = FONT) +
+  scale_fill_manual(values = c("ohne PK-Vorbezug" = GREY, "mit PK-Vorbezug fürs Eigenheim" = BLUE)) +
+  scale_x_continuous(limits = c(0, 112), breaks = seq(0, 100, 25), expand = c(0, 0)) +
+  labs(x = "Anteil der Eigentümerinnen und Eigentümer (%)", y = NULL) +
+  th + theme(panel.grid.major.y = element_blank())
+ggsave("../WRITING/manuscript/figures/Abbildung4.png", p4, width = 16, height = 8.5, units = "cm", dpi = 300, bg = "white")
 cat("ok\n")
