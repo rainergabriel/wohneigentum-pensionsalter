@@ -32,6 +32,9 @@ Ncommon <- t2$N[1]
 own_ten <- function(m, grp) { r <- t2[t2$model==m & t2$term==grp, ]; r }
 noRE <- "tenure3owner, no other RE"; plusRE <- "tenure3owner + other RE"
 b_bin <- function(step) t11$owner_b[t11$schritt==step]      # binary-owner coef at a decomposition step
+b_own <- function(m) t2$est[t2$spec=="owner (binär)" & t2$model==m]   # binary-owner coef in model m
+t2c <- rd("tab2c_MI.csv")
+mi_ten <- function(m, grp) t2c$est_MI[t2c$model==m & t2c$term==grp]   # MI tenure3 coef
 intp4 <- t3$p[t3$block=="M4 + owner×strain" & grepl("owner:strain", t3$term)][1]
 intp5 <- t3$p[t3$block=="M5 + owner×strain" & grepl("owner:strain", t3$term)][1]
 mi <- function(sp) { r <- t5[grepl(sp, t5$spec, fixed=TRUE), ]; r$est[1] }
@@ -41,11 +44,13 @@ g1 <- function(v, col) t1[[col]][t1$variable==v]
 Diese Kurzauswertung fasst die **Hauptergebnisse** zum Zusammenhang von **Wohnform
 und Lebenszufriedenheit** bei den über 65-Jährigen in der Schweiz zusammen (Swiss
 Aging Survey 2022, 65+; gewichtet). Lebenszufriedenheit = Diener-SWLS (5–35).
-Die Revision 2 trennt **objektive Ressourcen** (Einkommen, Vermögen, Hauswert,
-imputierte Miete, Hypothek/Belehnungsgrad — alles CHF-Beträge bzw. Ja/Nein-Fakten)
-sauber von der **subjektiven Einschätzung** (mit dem Einkommen auskommen; unerwartete
-Ausgabe decken). Letztere wird nach Gabriel & Hümbelin (2026) *nie* zur Klassierung
-von Anspannung benutzt, sondern erst im letzten Modellblock (M5) als Erklärung geprüft.
+Die Analyse trennt die **objektiven Ressourcen** (äquivalisiertes Einkommen und
+Finanzvermögen; M4) sauber von der **subjektiven Einschätzung** (mit dem Einkommen
+auskommen; unerwartete Ausgabe decken; M5). Letztere wird nach Gabriel & Hümbelin
+(2026) *nie* zur Klassierung von Anspannung benutzt, sondern erst im letzten Block
+(M5) als Erklärung geprüft. Die owner-spezifischen Grössen (Hypothek, Belehnungsgrad,
+PK-Vorbezug, imputierte Miete) sind für Mietende konstruktionsbedingt null und werden
+daher **separat innerhalb der Eigentümer** untersucht (Abschnitt 4–5).
 
 \begin{mdframed}[backgroundcolor=black!5,linewidth=0pt]
 \textbf{Kernbefunde}
@@ -56,11 +61,12 @@ von Anspannung benutzt, sondern erst im letzten Modellblock (M5) als Erklärung 
   und \textbf{subjektiv zuversichtlicher} („kommt leicht aus": `r g1("auskommen: leicht (%)","Miete")`\%
   Mieter vs. `r g1("auskommen: leicht (%)","Eig_ohne")`\% / `r g1("auskommen: leicht (%)","Eig_mit")`\% Eigentümer).
   \item Eigentümer berichten eine \textbf{höhere Lebenszufriedenheit} (binär roh
-  +`r sprintf('%.2f', b_bin("M3 (ohne Finanzen)")+0.6)` Punkte). Dieser Vorteil
-  \textbf{übersteht die objektiven Ressourcen} (M4) weitgehend, \textbf{schliesst sich
-  aber mit der subjektiven Lage} (M5): Eigentümer ohne weitere Immobilie
-  +`r sprintf('%.2f', own_ten("M4",noRE)$est)` (M4) $\rightarrow$
-  +`r sprintf('%.2f', own_ten("M5",noRE)$est)` (M5, n.s.).
+  +`r sprintf('%.2f', b_own("M0"))` Punkte). Dieser Vorteil \textbf{verengt sich mit den
+  objektiven Ressourcen} (M4) und \textbf{schliesst sich mit der subjektiven Lage} (M5):
+  Eigentümer ohne weitere Immobilie +`r sprintf('%.2f', own_ten("M3",noRE)$est)` (M3)
+  $\rightarrow$ +`r sprintf('%.2f', own_ten("M4",noRE)$est)` (M4) $\rightarrow$
+  +`r sprintf('%.2f', own_ten("M5",noRE)$est)` (M5, n.s.); mit weiterer Immobilie bleibt
+  +`r sprintf('%.2f', own_ten("M5",plusRE)$est)` (M5, p < .05).
   \item \textbf{Es ist die \emph{erlebte} finanzielle Leichtigkeit, nicht das Ressourcen-Niveau:}
   in der Dekomposition schrumpft der Eigentümer-Koeffizient fast nur beim Schritt
   „mit dem Einkommen auskommen" (−`r sprintf('%.2f', t11$drop[t11$schritt=="+ auskommen"])`),
@@ -121,24 +127,29 @@ fig("fig1_owner-coef.png")
 ```
 
 ```{r tab2}
-tt <- t2[, c("model","term","est","se","lcl","ucl","p","est_MI","se_MI")]
+tt <- t2[t2$spec=="tenure3", c("model","term","est","se","lcl","ucl","p","R2")]
 tt$term <- gsub("tenure3", "", tt$term)
-tt[is.na(tt)] <- NA
 kable(tt, booktabs = TRUE, row.names = FALSE, digits = 2,
-      col.names = c("Modell","Wohnform (vs. Mieter)","b","SE","KI u.","KI o.","p","b (MI)","SE (MI)"),
-      caption = sprintf("Geschachtelte gewichtete OLS auf SWLS: Wohnform-Koeffizienten, M0–M5. CC = Complete-Case (gemeinsame Stichprobe n = %s); MI = multiple Imputation (m=20), nur für die Modelle mit Vermögensblock (M4, M5).", format(Ncommon, big.mark="'")))
+      col.names = c("Modell","Wohnform (vs. Mietende)","b","SE","KI u.","KI o.","p","R²"),
+      caption = sprintf("Geschachtelte gewichtete OLS auf SWLS: Wohnform-Koeffizienten, M0–M5 (gemeinsame Complete-Case-Stichprobe n = %s). M4 = + objektive Ressourcen (Einkommen + Finanzvermögen), M5 = + subjektive Einschätzung.", format(Ncommon, big.mark="'")))
 ```
 
+Die Vermögens-Item-Nonresponse (≈ 40 %) ist unkritisch: unter **multipler Imputation
+(m = 20)** sind die Eigentümer-Koeffizienten praktisch unverändert (Eigentum ohne
+weitere Immobilie M4 +`r sprintf('%.2f', mi_ten("M4", "tenure3owner, no other RE"))`,
+M5 +`r sprintf('%.2f', mi_ten("M5", "tenure3owner, no other RE"))`; mit weiterer
+Immobilie M4 +`r sprintf('%.2f', mi_ten("M4", "tenure3owner + other RE"))`, M5
++`r sprintf('%.2f', mi_ten("M5", "tenure3owner + other RE"))`).
+
 **Was genau verengt den Vorteil?** Die Dekomposition (Tab. 3) zerlegt den Rückgang
-des (binären) Eigentümer-Koeffizienten von M3 bis M5. Einkommen
-(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ Einkommen"])`) und Finanzvermögen
-(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ Finanzvermögen"])`) nehmen nur wenig weg;
-die imputierte Miete praktisch nichts; Hypothek/Belehnungsgrad heben den Koeffizienten
-sogar leicht (die hypothekenfreien Eigentümer sind die Referenz). Der eine grosse
-Schritt ist **„mit dem Einkommen auskommen"**
-(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ auskommen"])`). Es ist also die
-*erlebte* finanzielle Leichtigkeit, die den Eigentumsvorteil trägt — nicht das
-objektive Ressourcen-Niveau.
+des (binären) Eigentümer-Koeffizienten von M3 bis M5. Die objektiven Ressourcen nehmen
+zusammen rund ein Drittel weg — **Einkommen**
+(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ Einkommen"])`) und **Finanzvermögen**
+(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ Finanzvermögen (=M4)"])`). Der grösste
+einzelne Schritt ist aber die subjektive Einschätzung **„mit dem Einkommen auskommen"**
+(−`r sprintf('%.2f', t11$drop[t11$schritt=="+ auskommen"])`); die Liquidität fügt nichts
+mehr hinzu. Es ist also — über das objektive Ressourcen-Niveau hinaus — die *erlebte*
+finanzielle Leichtigkeit, die den Eigentumsvorteil trägt.
 
 ```{r tab-dec}
 td <- t11[, c("schritt","owner_b","drop")]
@@ -235,15 +246,14 @@ kable(tpks[, c("modell","pil2_home_b","se","p","n")], booktabs = TRUE, row.names
 
 # Robustheit
 
-Das Muster — Eigentumsvorteil, der die objektiven Ressourcen übersteht und sich an der
-subjektiven Lage schliesst, ohne Puffereffekt — bestätigt sich durchgehend (Tab. 7):
-**multiple Imputation (m = 20)** als Primärspezifikation des Vermögensblocks (Eigentum
+Das Muster — Eigentumsvorteil, der sich mit den objektiven Ressourcen verengt und mit
+der subjektiven Lage schliesst, ohne Puffereffekt — bestätigt sich durchgehend (Tab. 7):
+**multiple Imputation (m = 20)** des Vermögensblocks (Eigentum binär
 M4 = +`r sprintf('%.2f', mi("MI m=20, M4 owner"))`, M5 = +`r sprintf('%.2f', mi("MI m=20, M5 owner"))`),
 ordinale Logit-Schätzung, ungewichtete Schätzung, getrennt nach Altersgruppen
-(65–79 vs. 80+), sowie mit der **BFS-9-Typologie** und Bergregion statt DEGURBA. Die
-Sensitivität gegenüber dem imputierten Mietertrag (2–4 %), dem Hypothekar-Referenzzins
-(1,25 vs. 2,5 %) und der Hauswert-Definition für Eigentümer mit weiterer Immobilie ist
-gering. Die Interaktion bleibt in allen Spezifikationen nicht signifikant.
+(65–79 vs. 80+; im Haupttext nicht berichtet), sowie mit der **BFS-9-Typologie** und
+Bergregion statt DEGURBA. Die Interaktion bleibt in allen Spezifikationen nicht
+signifikant.
 
 ```{r tab5}
 t5x <- t5[, c("spec","term","est","se")]

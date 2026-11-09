@@ -126,7 +126,12 @@ cat("Step 2 done: tab1 (", nrow(tab1), "rows )\n")
 ## =============================================================================
 ## STEP 3. Nested models M0-M5  -> tab2 (+ CC|MI), tab2b, fig1, tab11
 ## =============================================================================
-objblock <- "+ log_eqinc + wealth_fin_tert + log_imprent_eq + has_mortgage + ltv + pil2_home"
+## FINAL SPECIFICATION (D-FINALSPEC, 2026-11-09): M4 = objective resources = log
+## equivalised income + financial-wealth terciles (incl. a "missing" level) ONLY.
+## The owner-specific variables (mortgage, LTV, PK-Vorbezug, imputed rent) are 0 by
+## construction for tenants and pushed the owner coefficient back up in M4, so they
+## are NOT in the nested models — they are examined within owners in tab4.
+objblock <- "+ log_eqinc + wealth_fin_tert"
 subblock <- "+ endsmeet_f + suddenexp_subj"
 f0 <- "~ TEN"
 f1 <- "~ TEN + age + female + civstat + alone + edu3 + swiss + haskids"
@@ -137,9 +142,11 @@ f5 <- paste(f4, subblock)
 FS <- list(M0=f0, M1=f1, M2=f2, M3=f3, M4=f4, M5=f5)
 
 ## common complete-case sample = complete on every M5 term (so M0..M5 share it)
+## wealth MAY be missing (enters as tercile factor with the "missing" level), so
+## wealth_fin_tert is NOT a completeness requirement -> larger common sample (~2'502).
 base_vars <- c("swls","age","female","civstat","alone","edu3","swiss","haskids",
                "gali_any","dep_score","srh_poor","lingreg","degurba",
-               "log_eqinc","wealth_fin_tert","log_imprent_eq","has_mortgage","ltv","pil2_home",
+               "log_eqinc","wealth_fin_tert",
                "endsmeet_f","suddenexp_subj","w","strata_22")
 cc  <- complete.cases(d[, base_vars])
 dT  <- d[cc & !is.na(d$tenure3), ]; desT <- mkdes(dT)
@@ -150,21 +157,28 @@ cat(sprintf("Step 3 common complete-case sample: N = %d (tenure3)\n", N_common))
 ## --- CC fits ---------------------------------------------------------------
 fits_ten <- lapply(FS, function(f) svyglm(as.formula(paste("swls", sub("TEN","tenure3",f))), design = desT))
 fits_own <- lapply(FS, function(f) svyglm(as.formula(paste("swls", sub("TEN","owner",f))),   design = desO))
-tab2 <- do.call(rbind, Map(function(fit,nm) ci_tab(fit, "tenure3", nm), fits_ten, names(fits_ten)))
-r2 <- sapply(fits_ten, function(fit) { y<-fit$y; mu<-fitted(fit); w<-weights(fit$survey.design)
-  1 - sum(w*(y-mu)^2)/sum(w*(y-weighted.mean(y,w))^2) })
-tab2$R2 <- round(r2[tab2$model], 3); tab2$N <- N_common
-tab2[,c("est","se","lcl","ucl","p")] <- round(tab2[,c("est","se","lcl","ucl","p")], 3)
+r2fun <- function(fit){ y<-fit$y; mu<-fitted(fit); w<-weights(fit$survey.design)
+  1 - sum(w*(y-mu)^2)/sum(w*(y-weighted.mean(y,w))^2) }
+r2_ten <- sapply(fits_ten, r2fun); r2_own <- sapply(fits_own, r2fun)
+tab2_ten <- do.call(rbind, Map(function(fit,nm){ r<-ci_tab(fit,"tenure3",nm); r$spec<-"tenure3"; r$R2<-r2_ten[[nm]]; r}, fits_ten, names(fits_ten)))
+tab2_own <- do.call(rbind, Map(function(fit,nm){ r<-ci_tab(fit,"^owner$",nm); r$spec<-"owner (binär)"; r$R2<-r2_own[[nm]]; r}, fits_own, names(fits_own)))
+tab2 <- rbind(tab2_ten, tab2_own); tab2$N <- N_common
+tab2[,c("est","se","lcl","ucl","p","R2")] <- round(tab2[,c("est","se","lcl","ucl","p","R2")], 3)
+tab2 <- tab2[, c("spec","model","term","est","se","lcl","ucl","p","R2","N")]
+write.csv(tab2, "output/tab2_nested-models.csv", row.names = FALSE)
 
 ## --- MI (mice m=MI_M): PRIMARY for the wealth block. Impute continuous wealth/
 ##     income/ltv/imp-rent/pil2 (~40% item non-response); re-derive logs+tertiles
 ##     per implicate; pool tenure3/owner coefficients (Rubin). Reused by tab5. ---
 suppressWarnings(suppressMessages(library(mice)))
+## Impute the FINAL-SPEC variables only (income + financial wealth), using the model
+## covariates as predictors — matches the lean M4/M5 (no owner-specific regressors).
 mi_src <- c("swls","tenure3","owner","age","female_f","civstat","alone","edu3","swiss","haskids",
             "gali_any","dep_score","srh_poor","lingreg","degurba",
-            "eqinc","wealth_fin","ltv","has_mortgage","imp_rent_eq","imp_rent_net_eq","pil2_home",
-            "endsmeet_f","suddenexp_subj","strain","w","strata_22")
-imp_df <- d[!is.na(d$w) & !is.na(d$tenure3) & !is.na(d$owner), mi_src]
+            "eqinc","wealth_fin","endsmeet_f","suddenexp_subj","strain","w","strata_22")
+## Impute on the SAME analytic sample as CC (complete on all M5 covariates except
+## wealth), imputing only the missing wealth — not on the larger all-65+ frame.
+imp_df <- d[cc & !is.na(d$tenure3) & !is.na(d$owner), mi_src]
 for (b in c("female_f")) imp_df[[b]] <- factor(imp_df[[b]])
 meth <- make.method(imp_df)
 meth[c("swls","tenure3","owner","strain","w","strata_22")] <- ""     # never impute outcome/design/focal
@@ -176,7 +190,6 @@ complete_derived <- function(i) {
   ci <- complete(imp, i)
   ci$female         <- as.integer(ci$female_f == "woman")
   ci$log_eqinc      <- log(pmax(ci$eqinc, 1))
-  ci$log_imprent_eq <- ir_center(ci$imp_rent_eq, ci$owner, ci$w)   # centre within owners (D-IMPRENT-CENTER)
   ci$owner_re       <- as.integer(ci$tenure3 == "owner + other RE")
   q <- quantile(ci$wealth_fin, c(0,1/3,2/3,1), na.rm = TRUE)
   ci$wealth_fin_tert <- factor(cut(ci$wealth_fin, q, labels = c("low","mid","high"), include.lowest = TRUE),
@@ -196,13 +209,18 @@ mi_tab <- do.call(rbind, lapply(c("M4","M5"), function(m)
   do.call(rbind, lapply(c("tenure3owner, no other RE","tenure3owner + other RE"), function(tm) {
     v <- pool_coef(tm, build(FS[[m]], "tenure3"))
     data.frame(model = m, term = tm, est_MI = round(v["est"],3), se_MI = round(v["se"],3)) }))))
-tab2 <- merge(tab2, mi_tab, by = c("model","term"), all.x = TRUE)
-tab2 <- tab2[order(match(tab2$model, names(FS)), tab2$term), ]
-write.csv(tab2, "output/tab2_nested-models.csv", row.names = FALSE)
+## tab2c: MI (m=20) tenure3 coefficients for M4 & M5 — the paper reports MI in ONE
+## sentence, so it stays a small separate table (not merged into tab2).
+write.csv(mi_tab, "output/tab2c_MI.csv", row.names = FALSE)
 
-## full M5 coefficient table (all terms)
-tab2b <- ci_tab(fits_ten$M5, NULL, "M5 full"); tab2b <- tab2b[tab2b$term != "(Intercept)", ]
-tab2b[,c("est","se","lcl","ucl","p")] <- round(tab2b[,c("est","se","lcl","ucl","p")], 3)
+## tab2b: FULL coefficient table M0-M5 (Selina's "Vollständige Regressionsübersicht").
+## Wide: rows = term, columns M0..M5, cells = "est<stars> (se)".
+star <- function(p) ifelse(is.na(p),"",ifelse(p<.001,"***",ifelse(p<.01,"**",ifelse(p<.05,"*",""))))
+allc <- do.call(rbind, Map(function(fit,nm){ c0 <- ci_tab(fit, NULL, nm); c0 <- c0[c0$term != "(Intercept)", ]; c0$model <- nm; c0 },
+                           fits_ten, names(fits_ten)))
+allc$cell <- sprintf("%.2f%s (%.2f)", allc$est, star(allc$p), allc$se)
+tab2b <- reshape(allc[, c("term","model","cell")], idvar = "term", timevar = "model", direction = "wide")
+names(tab2b) <- sub("^cell\\.", "", names(tab2b)); tab2b[is.na(tab2b)] <- ""
 write.csv(tab2b, "output/tab2b_full-controls.csv", row.names = FALSE)
 
 ## --- fig1: binary-owner coefficient across M0-M5, objektiv|subjektiv divider --
@@ -227,13 +245,11 @@ saveRDS(p1, "output/fig1_owner-coef.rds")
 
 ## --- tab11: decomposition on the NEW order (owner coef, binary) --------------
 steps <- list(
-  `M3 (ohne Finanzen)` = f3,
-  `+ Einkommen`        = paste(f3, "+ log_eqinc"),
-  `+ Finanzvermögen`   = paste(f3, "+ log_eqinc + wealth_fin_tert"),
-  `+ imput. Miete`     = paste(f3, "+ log_eqinc + wealth_fin_tert + log_imprent_eq"),
-  `+ Hypothek/LTV (=M4)` = f4,
-  `+ auskommen`        = paste(f4, "+ endsmeet_f"),
-  `+ Liquidität (=M5)` = f5)
+  `M3 (ohne Finanzen)`     = f3,
+  `+ Einkommen`            = paste(f3, "+ log_eqinc"),
+  `+ Finanzvermögen (=M4)` = f4,
+  `+ auskommen`            = paste(f4, "+ endsmeet_f"),
+  `+ Liquidität (=M5)`     = f5)
 dec <- do.call(rbind, Map(function(f,nm){
   fit <- svyglm(build(f,"owner"), design = desO)
   c0 <- ci_tab(fit, "^owner$", nm); data.frame(schritt = nm, owner_b = round(c0$est,3), se = round(c0$se,3)) },
@@ -305,9 +321,18 @@ dJ <- dOwn[complete.cases(dOwn[, c("ltv_cat","mortgage_burden","log_imprentnet_e
 fJ <- svyglm(as.formula(paste(jf, ctrl)), design = mkdes(dJ))
 joint <- ci_tab(fJ, "has_mortgage|ltv_cat|mortgage_burden|log_imprentnet_eq|pil2_home|owner_re", "joint")
 joint$block <- "(g) gemeinsames Modell"; joint$n <- nrow(dJ)
-tab4 <- rbind(tab4_rows, joint)
+## rate-sensitivity note row: mortgage burden at MORTGAGE_RATE 0.025 (vs 0.0125 main)
+dOwn$mb_25 <- dOwn$mortgage_amt * 0.025 / 12 / dOwn$hh_income
+db <- dOwn[complete.cases(dOwn[, c("swls", CVARS, "mb_25", "w", "strata_22")]), ]
+rb <- ci_tab(svyglm(as.formula(paste("swls ~ mb_25 +", ctrl)), design = mkdes(db)), "^mb_25$", "")
+rb$block <- "(c-sens) Hypothekenlast @ Zins 2.5%"; rb$n <- nrow(db)
+tab4 <- rbind(tab4_rows, joint, rb[, names(tab4_rows)])
 tab4[,c("est","se","lcl","ucl","p")] <- round(tab4[,c("est","se","lcl","ucl","p")], 3)
 tab4 <- tab4[, c("block","term","est","se","lcl","ucl","p","n")]
+## small-n flag for the >30% burden group (unweighted n)
+tab4$note <- ""
+tab4$note[tab4$term == "mort_burden_30"] <- sprintf("n(Last>30%%)=%d ungew.", sum(dOwn$mort_burden_30 == 1, na.rm = TRUE))
+tab4$note[tab4$block == "(c-sens) Hypothekenlast @ Zins 2.5%"] <- "Sensitivität: Referenzzins 2.5% statt 1.25%"
 write.csv(tab4, "output/tab4_owner-burden.csv", row.names = FALSE)
 
 ## fig3: weighted mean SWLS by LTV category and by mortgage-burden band (owners)
@@ -365,24 +390,9 @@ cb <- ci_tab(fB,"^owner$",""); rob$bfs9 <- add("(vi) M4 BFS-9 typology","owner",
 ## (vii) M4 with collapsed BFS-9 + Bergregion
 dK <- dO[!is.na(dO$bfs_coll), ]; fK <- svyglm(as.formula(paste("swls", sub("degurba","bfs_coll + mountain", sub("TEN","owner",f4)))), design=mkdes(dK))
 ck <- ci_tab(fK,"^owner$",""); rob$bfs_coll <- add("(vii) M4 BFS-9(coll)+Bergregion","owner",ck$est,ck$se)
-## --- sensitivity to housing constants (recompute derived vars, refit M4 owner) ---
-refit_owner_M4 <- function(dd) { dd <- dd[complete.cases(dd[, base_vars]) & !is.na(dd$owner), ]
-  ci_tab(svyglm(build(f4,"owner"), design = mkdes(dd)), "^owner$","") }
-## NET_YIELD 0.02 / 0.04 : changes imputed rent (centred within owners) in M4
-for (ny in c(0.02, 0.04)) { dd <- d
-  ir <- ifelse(dd$owner==0, 0, ny*dd$home_value/12 / dd$equiv_factor)
-  dd$log_imprent_eq <- ir_center(ir, dd$owner, dd$w)
-  c0 <- refit_owner_M4(dd); rob[[paste0("ny",ny)]] <- add(sprintf("sens: NET_YIELD %.2f (M4 owner)",ny),"owner",c0$est,c0$se) }
-## full-RE home value (D-HOMEVALUE-RE off): owner+other RE uses the FULL RE value
-dd <- d
-dd$ltv <- ifelse(dd$owner==1, pmin(dd$mortgage_amt/dd$home_value_full, 1.5), ifelse(dd$owner==0,0,NA))
-ir <- ifelse(dd$owner==0, 0, 0.03*dd$home_value_full/12 / dd$equiv_factor)
-dd$log_imprent_eq <- ir_center(ir, dd$owner, dd$w)
-c0 <- refit_owner_M4(dd); rob$fullRE <- add("sens: full RE value for owner+RE (M4 owner)","owner",c0$est,c0$se)
-## MORTGAGE_RATE 0.025 : affects mortgage_burden (reported for tab4 (c))
-dd <- dOwn; dd$mb2 <- dd$mortgage_amt*0.025/12 / dd$hh_income
-fmb <- svyglm(as.formula(paste("swls ~ mb2 +", ctrl)), design = mkdes(dd[!is.na(dd$mb2), ]))
-cmb <- ci_tab(fmb,"^mb2$",""); rob$rate025 <- add("sens: MORTGAGE_RATE 0.025 (tab4 burden coef)","mortgage_burden",cmb$est,cmb$se)
+## (NET_YIELD / MORTGAGE_RATE / full-RE sensitivities dropped from tab5 under
+##  D-FINALSPEC — imputed rent & mortgage are no longer in the nested models;
+##  the mortgage-rate sensitivity now lives inside tab4 as a note row.)
 tab5 <- do.call(rbind, rob); rownames(tab5) <- NULL
 write.csv(tab5, "output/tab5_robustness.csv", row.names = FALSE)
 cat("Step 6 done: tab5\n")
