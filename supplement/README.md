@@ -201,5 +201,5 @@ Abbildung 4 (PK-Vorbezug).
 `code/` enthält `01_setup-data.R`, `02_analysis.R`, `02c_pk-vorbezug.R`, `03_figures_print.R` 
 (Mikrodaten nicht enthalten; `SAS_DATA_PATH` auf die `.sav` setzen zum Reproduzieren).
 
-Repository: https://github.com/rainergabriel/wohnen-und-wohnbefinden-sas  ·  Generiert mit `analysis/04_build_supplement.R`.
+Repository: https://github.com/rainergabriel/wohneigentum-pensionsalter  ·  Generiert mit `analysis/04_build_supplement.R`.
 
