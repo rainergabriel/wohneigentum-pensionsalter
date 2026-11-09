@@ -7,7 +7,7 @@
 ## =============================================================================
 
 SUP <- "../supplement"
-REPO_URL <- "https://github.com/<user>/wohneigentum-pensionsalter"   # <-- Rainer: replace <user>
+REPO_URL <- "https://github.com/rainergabriel/wohnen-und-wohnbefinden-sas"
 dir.create(file.path(SUP, "figures"), recursive = TRUE, showWarnings = FALSE)
 dir.create(file.path(SUP, "code"),    recursive = TRUE, showWarnings = FALSE)
 rd <- function(f) read.csv(file.path("output", f), check.names = FALSE)

@@ -24,8 +24,12 @@
 suppressWarnings(suppressMessages({library(haven); library(dplyr)}))
 source("00_build-silver.R")   # in-repo silver derivation (build_silver_sas); see its header
 
-RAW <- Sys.getenv("SAS_DATA_PATH", unset =
-  "/Users/gabn/Library/CloudStorage/GoogleDrive-rainer.gabriel@gmail.com/My Drive/Documents/Work/ACTIVE/ZHAW/3_Research-Projects/Altersmonitoring Pro Senectute/4_Erhebung/datenbereinigung/data_sas22_ReleaseB_2025-09-16.sav")
+## Raw SAS 2022 ReleaseB `.sav` — MICRODATA, not in the repo (available via SWISSUbase /
+## Pro Senectute; see README "Daten"). Set SAS_DATA_PATH to your local copy, or place the
+## file at analysis/data/data_sas22_ReleaseB_2025-09-16.sav.
+RAW <- Sys.getenv("SAS_DATA_PATH", unset = "data/data_sas22_ReleaseB_2025-09-16.sav")
+if (!file.exists(RAW))
+  stop("SAS raw release not found at '", RAW, "'. Set SAS_DATA_PATH to the .sav (see README).", call. = FALSE)
 
 dir.create("data", showWarnings = FALSE)
 na_neg <- function(x) { x <- suppressWarnings(as.numeric(zap_labels(x))); x[x < 0] <- NA; x }

@@ -11,6 +11,10 @@
 !/README.md
 !/analysis/
 
+# the online supplement (aggregated tables + figures + code copies; no microdata)
+!/supplement/
+!/supplement/**
+
 # inside analysis/: ignore all, then re-allow code + report + figures
 analysis/*
 !analysis/*.R
