@@ -102,7 +102,9 @@ blockB <- rbind(                                             # OBJEKTIVE Ressour
   wmed_by(des_ow,  "ltv",            "Belehnungsgrad (LTV) Median (Eigent.)",  ownersonly = TRUE),
   wmed_by(des_owm, "mortgage_burden","Hypothekenlast % Eink. Median (mit Hyp.)", ownersonly = TRUE, scale = 100),
   wmed_by(des_ow,  "home_value",     "Hauswert Median (Eigent.; CHF)",         ownersonly = TRUE),
-  wmed_by(des_ow,  "imp_rent_eq",    "imput. Miete äquiv. Median (CHF/Mt)",    ownersonly = TRUE))
+  wmed_by(des_ow,  "imp_rent_eq",    "imput. Miete äquiv. Median (CHF/Mt)",    ownersonly = TRUE),
+  wbin(des_all,    "pil2_home",      "PK-Vorbezug fürs Eigenheim (%)"),
+  wbin(des_all,    "pil2_any",       "PK-Bezug 2. Säule gesamt (%)"))
 blockC <- rbind(                                             # SUBJEKTIVE Einschätzung
   wbin(des_all, "endsmeet_easy",  "auskommen: leicht (%)"),
   wbin(des_all, "endsmeet_hard",  "auskommen: grosse Mühe (%)"),
@@ -265,7 +267,7 @@ p2 <- ggplot(cell, aes(strain, swls, colour = owner, group = owner)) +
   geom_pointrange(aes(ymin = lcl, ymax = ucl), position = position_dodge(.2), size = .6) +
   scale_colour_manual(values = c(Mieter = GREY, `Eigentümer` = BLUE), name = NULL) +
   labs(x = NULL, y = "SWLS (gewichtet, 95%-KI)",
-       title = "Das Eigenheim puffert die objektive Einkommensarmut nicht",
+       title = "Das Eigenheim federt die objektive Einkommensarmut nicht ab",
        subtitle = sprintf("Mittlere Lebenszufriedenheit nach Wohnform × Einkommensarmut, 65+ (Interaktion owner×strain p = %.2f, M4).",
                           tab3$p[tab3$block=="M4 + owner×strain" & grepl("owner:strain", tab3$term)][1])) +
   theme_minimal(base_size = 11) + theme(legend.position = "bottom")

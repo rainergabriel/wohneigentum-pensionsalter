@@ -26,6 +26,7 @@ fig <- function(x) include_graphics(file.path("output", x))
 t1 <- rd("tab1_descriptives.csv"); t2 <- rd("tab2_nested-models.csv")
 t2b <- rd("tab2b_full-controls.csv"); t3 <- rd("tab3_interaction.csv")
 t4 <- rd("tab4_owner-burden.csv"); t5 <- rd("tab5_robustness.csv"); t11 <- rd("tab11_decomposition.csv")
+tpk <- rd("tab_pkvorbezug_resources.csv"); tpks <- rd("tab_pkvorbezug_swls.csv")
 Ncommon <- t2$N[1]
 ## helpers to pull coefficients
 own_ten <- function(m, grp) { r <- t2[t2$model==m & t2$term==grp, ]; r }
@@ -85,6 +86,15 @@ höheres äquivalisiertes Einkommen, mehr Finanz- und Nettovermögen, und (bei d
 Eigentümern mit weiterer Immobilie) deutlich höhere Hauswerte. Zugleich sind sie
 **subjektiv zuversichtlicher**: fast alle Eigentümer könnten eine unerwartete Ausgabe
 decken, während rund ein Viertel der Mieter das verneint.
+
+Rund `r g1("PK-Vorbezug fürs Eigenheim (%)","Eig_ohne")`–`r g1("PK-Vorbezug fürs Eigenheim (%)","Eig_mit")` %
+der Eigentümer haben (Teile des) Eigenheim(s) mit **Pensionskassenkapital der 2. Säule
+vorbezogen** (Mieter: `r g1("PK-Vorbezug fürs Eigenheim (%)","Miete")` %; Tab. 1). Dieser
+PK-Vorbezug fürs Eigenheim hängt innerhalb der Eigentümer **nicht signifikant** mit der
+Lebenszufriedenheit zusammen (Tab. 4, Zeile e:
+b = `r sprintf('%.2f', t4$est[t4$block=="(e) PK-Bezug fürs Eigenheim"])`,
+p = `r sprintf('%.2f', t4$p[t4$block=="(e) PK-Bezug fürs Eigenheim"])`) und ändert die
+Eigentümer-Koeffizienten in M4/M5 nicht (als Kontrollvariable enthalten).
 
 ```{r tab1}
 t1x <- t1[, c("variable","Gesamt","Miete","Eig_ohne","Eig_mit")]
@@ -172,10 +182,61 @@ kable(t4x, booktabs = TRUE, row.names = FALSE, digits = 2,
 fig("fig3_owner-burden.png")
 ```
 
+# Der PK-Vorbezug fürs Eigenheim: Ressourcen und Zufriedenheit
+
+```{r pk-setup, include=FALSE}
+pv  <- function(m, col) tpk[[col]][tpk$metric == m]
+ps  <- function(m) tpks$pil2_home_b[tpks$modell == m]
+```
+
+Ein Teil der Eigentümer hat (Teile des) Eigenheim(s) mit einem **Vorbezug von
+Pensionskassenkapital der 2. Säule** finanziert (rund
+`r g1("PK-Vorbezug fürs Eigenheim (%)","Eig_ohne")`–`r g1("PK-Vorbezug fürs Eigenheim (%)","Eig_mit")`\%
+der Eigentümer; Tab. 1). Verknüpft man diesen Vorbezug mit den
+**finanziellen Ressourcen** im Alter (Tab. 5), zeigt sich ein klares Muster: PK-Vorbezüger
+sind **nicht ärmer** an Einkommen oder Nettovermögen (Äquiv.-Einkommen Median CHF
+`r format(pv("Äquiv.-Einkommen Median (CHF)","PK_Vorbezug"), big.mark="'")` vs.
+`r format(pv("Äquiv.-Einkommen Median (CHF)","kein_PK"), big.mark="'")`, n.s.), aber **deutlich
+höher verschuldet und subjektiv knapper**: sie tragen häufiger noch eine Hypothek
+(`r pv("noch mit Hypothek (%)","PK_Vorbezug")`\% vs. `r pv("noch mit Hypothek (%)","kein_PK")`\%),
+haben einen höheren Belehnungsgrad (LTV-Median `r pv("Belehnungsgrad (LTV) Median","PK_Vorbezug")`
+vs. `r pv("Belehnungsgrad (LTV) Median","kein_PK")`) und eine höhere Hypothekenlast, und sie
+sagen **seltener, dass sie „leicht mit dem Einkommen auskommen"**
+(`r pv("auskommen: leicht (%)","PK_Vorbezug")`\% vs. `r pv("auskommen: leicht (%)","kein_PK")`\%;
+Abb. 4).
+
+```{r fig-pk, fig.cap="PK-Vorbezug fürs Eigenheim und finanzielle Lage: Anteile unter Eigentümern 65+ (gewichtet). CHF-Mediane in Tab. 5."}
+fig("fig_pkvorbezug.png")
+```
+
+```{r tab-pk-res}
+tpr <- tpk[, c("metric","kein_PK","PK_Vorbezug","p")]
+kable(tpr, booktabs = TRUE, row.names = FALSE,
+      col.names = c("Kennzahl (Eigentümer 65+)","kein PK-Vorbezug","PK-Vorbezug","p"),
+      caption = "PK-Vorbezug fürs Eigenheim und finanzielle Ressourcen im Alter (gewichtet; CHF = Mediane, übrige \\%).")
+```
+
+**Und die Zufriedenheit?** Der Vorbezug selbst hängt roh schwach negativ mit der
+Lebenszufriedenheit zusammen (−`r sprintf('%.2f', abs(ps("mA: roh (nur PK)")))`), doch dieser
+Zusammenhang **halbiert sich, sobald man die finanzielle Lage kontrolliert** — von
+−`r sprintf('%.2f', abs(ps("mB: + Soziodem./Gesundh./Reg.")))` (mit Soziodemografie/Gesundheit/Region)
+auf −`r sprintf('%.2f', abs(ps("mC: + objektive Finanzen")))` (+ objektive Finanzen) und
+−`r sprintf('%.2f', abs(ps("mD: + subjektive Lage (=voll)")))` (+ subjektive Lage); er ist in keiner
+Stufe signifikant (Tab. 6). Der (schwache) Zufriedenheits-Nachteil des PK-Vorbezugs läuft
+also **über die knappere, stärker verschuldete finanzielle Position** — nicht über den
+Vorbezug an sich. Das passt zum Hauptbefund: nicht der Grundbuch- oder Vorsorge-Vorgang,
+sondern die *erlebte* finanzielle Leichtigkeit trägt die Wohlbefindens-Unterschiede.
+
+```{r tab-pk-swls}
+kable(tpks[, c("modell","pil2_home_b","se","p","n")], booktabs = TRUE, row.names = FALSE, digits = 2,
+      col.names = c("Modell (Eigentümer 65+)","b (PK-Vorbezug)","SE","p","n"),
+      caption = "SWLS auf PK-Vorbezug fürs Eigenheim, schrittweise um Ressourcen erweitert (gewichtet). Der Koeffizient attenuiert mit den Finanzkontrollen.")
+```
+
 # Robustheit
 
 Das Muster — Eigentumsvorteil, der die objektiven Ressourcen übersteht und sich an der
-subjektiven Lage schliesst, ohne Puffereffekt — bestätigt sich durchgehend (Tab. 5):
+subjektiven Lage schliesst, ohne Puffereffekt — bestätigt sich durchgehend (Tab. 7):
 **multiple Imputation (m = 20)** als Primärspezifikation des Vermögensblocks (Eigentum
 M4 = +`r sprintf('%.2f', mi("MI m=20, M4 owner"))`, M5 = +`r sprintf('%.2f', mi("MI m=20, M5 owner"))`),
 ordinale Logit-Schätzung, ungewichtete Schätzung, getrennt nach Altersgruppen
