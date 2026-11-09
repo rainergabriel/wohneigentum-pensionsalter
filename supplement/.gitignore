@@ -1,0 +1,8 @@
+# Supplement: nur Code, Tabellen (README) und Abbildungen — keine Mikrodaten.
+*.sav
+*.dta
+*.rds
+*.RData
+data/
+.DS_Store
+.Rhistory

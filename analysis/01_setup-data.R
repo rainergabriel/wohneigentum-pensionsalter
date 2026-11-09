@@ -4,14 +4,17 @@
 ## Builds data/wohnen_working.rds for the housing / residential-well-being paper
 ## (see WRITING/analysis-plan_2026-10-30.md and HANDOFF/).
 ##
-## SOURCES (both OUTSIDE this repo — microdata is never committed):
-##  (A) SAS 2022 raw release matching codebook 2025-08-05:
-##      data_sas22_ReleaseB_2025-09-16.sav  (SAS_DATA_PATH)
-##  (B) SAS SILVER rebuilt on that same release (Step 0):
-##      silver/sas/sas_release2025-09-16.rds  (SAS_SILVER)
-##      → equivalised income, net/financial wealth, income-poverty flag. NOT
-##        re-derived here, so the paper shares Rainer's canonical SAS definitions.
-##      Joined on Respondent_ID; the join match rate is asserted ~100 %.
+## SOURCE — a SINGLE raw file (OUTSIDE this repo; microdata is never committed):
+##   SAS 2022 raw release matching codebook 2025-08-05:
+##   data_sas22_ReleaseB_2025-09-16.sav  (SAS_DATA_PATH)
+##
+## SILVER variables (equivalised income, net/financial wealth, real-estate value,
+## mortgage sum, income-poverty flag) are DERIVED IN-REPO from that raw file by
+## `00_build-silver.R` (build_silver_sas) — the warehouse silver logic vendored
+## verbatim (helpers + prep merge + build_core_sas, incl. hh_wealth_re/hh_mortgage).
+## So the whole pipeline is 100% reproducible from the raw `.sav` alone, with NO
+## dependency on the (separate, local-only) altersdata warehouse. The in-repo build
+## was verified value-for-value against the warehouse `sas_2026-11-09.rds`.
 ##
 ## NOTE: SAS has no dwelling-type / years-in-dwelling / rent-burden / move-intent
 ## items — those parts of the plan cannot be done with this survey (logged in
@@ -19,14 +22,35 @@
 ## =============================================================================
 
 suppressWarnings(suppressMessages({library(haven); library(dplyr)}))
+source("00_build-silver.R")   # in-repo silver derivation (build_silver_sas); see its header
 
-RAW <- Sys.getenv("SAS_DATA_PATH", unset =
-  "/Users/gabn/Library/CloudStorage/GoogleDrive-rainer.gabriel@gmail.com/My Drive/Documents/Work/ACTIVE/ZHAW/3_Research-Projects/Altersmonitoring Pro Senectute/4_Erhebung/datenbereinigung/data_sas22_ReleaseB_2025-09-16.sav")
-SILVER <- Sys.getenv("SAS_SILVER", unset =
-  "/Users/gabn/Library/CloudStorage/GoogleDrive-rainer.gabriel@gmail.com/My Drive/Documents/Work/ACTIVE/ZHAW/3.1 DATA WAREHOUSE/altersdata/silver/sas/sas_release2025-09-16.rds")
+## Raw SAS 2022 ReleaseB `.sav` — MICRODATA, not in the repo (available via SWISSUbase /
+## Pro Senectute; see README "Daten"). Set SAS_DATA_PATH to your local copy, or place the
+## file at analysis/data/data_sas22_ReleaseB_2025-09-16.sav.
+RAW <- Sys.getenv("SAS_DATA_PATH", unset = "data/data_sas22_ReleaseB_2025-09-16.sav")
+if (!file.exists(RAW))
+  stop("SAS raw release not found at '", RAW, "'. Set SAS_DATA_PATH to the .sav (see README).", call. = FALSE)
 
 dir.create("data", showWarnings = FALSE)
 na_neg <- function(x) { x <- suppressWarnings(as.numeric(zap_labels(x))); x[x < 0] <- NA; x }
+
+## ---- _run.log: tee key decisions / counts to a log the brief asks for --------
+LOG <- "_run.log"
+cat(sprintf("=== 01_setup-data.R run %s ===\n", Sys.time()), file = LOG)
+logline <- function(...) { msg <- paste0(...); cat(msg, "\n"); cat(msg, "\n", file = LOG, append = TRUE) }
+
+## weighted median (design weight w); no survey pkg dependency in setup
+wmedian <- function(x, w) {
+  ok <- !is.na(x) & !is.na(w) & w > 0
+  if (!any(ok)) return(NA_real_)
+  x <- x[ok]; w <- w[ok]; o <- order(x); x <- x[o]; w <- w[o]
+  cw <- cumsum(w) / sum(w)
+  x[which(cw >= 0.5)[1]]
+}
+
+## housing-finance constants (no magic numbers)
+MORTGAGE_RATE <- 0.0125   # hypothek. Referenzzinssatz BWO 2022 (open-question: level/source); sensitivity 0.025
+NET_YIELD     <- 0.03     # net imputed rental yield (gross ~4% minus ~1% upkeep); sensitivity 0.02/0.04
 
 raw <- read_sav(RAW); names(raw) <- trimws(names(raw))
 cat("Raw release:", nrow(raw), "respondents.\n")
@@ -113,45 +137,133 @@ d <- raw %>% transmute(
   strata_22 = as.character(strata_22)                            # canton-stratum code, e.g. "ZH-1"
 )
 
-## ---- join SILVER income / wealth / poverty (on Respondent_ID) ---------------
-sil <- readRDS(SILVER) %>%
+## ---- SILVER income / wealth / poverty — DERIVED IN-REPO from the same raw -----
+## build_silver_sas() (00_build-silver.R) reproduces the warehouse silver variables
+## from the raw release, so the pipeline is self-contained. Includes hh_wealth_re
+## (all real estate, CHF) and hh_mortgage (sum of all mortgages, CHF) — the amounts
+## the burden/LTV/imputed-net-rent analyses need. hh_wealth_net = fin + re − mortgage.
+sil <- build_silver_sas(raw) %>%
   transmute(id = as.character(pid),
             eqinc = income_eq, hh_income = hh_income,
-            wealth_net = hh_wealth_net, wealth_fin = hh_wealth_fin, poor_silver = poor)
+            wealth_net = hh_wealth_net, wealth_fin = hh_wealth_fin,
+            wealth_re = hh_wealth_re, mortgage_silver = hh_mortgage,
+            poor_silver = poor)
 d <- left_join(d, sil, by = "id")
 match_rate <- mean(d$id %in% sil$id)
-cat(sprintf("Silver join match rate: %.1f%% (%d of %d)\n", 100*match_rate, sum(d$id %in% sil$id), nrow(d)))
-stopifnot("Silver join match rate < 99% — check Step 0 / IDs" = match_rate > 0.99)
+logline(sprintf("Silver (in-repo build) join match rate: %.1f%% (%d of %d)", 100*match_rate, sum(d$id %in% sil$id), nrow(d)))
+stopifnot("Silver join match rate < 99% — check 00_build-silver.R / IDs" = match_rate > 0.99)
 
-## income-based financial strain (MAIN) = silver income-poverty flag;
-## subjective strain (sensitivity) = (great) difficulty making ends meet OR no buffer
+## =============================================================================
+## OBJECTIVE financial resources (CHF amounts & yes/no facts) — D-* in brief
+## =============================================================================
 d <- d %>% mutate(
+  ## MAIN strain = silver income-poverty flag (OBJECTIVE). endsmeet / suddenexp are
+  ## SUBJECTIVE and never define strain (brief, Gabriel & Hümbelin 2026).
   strain      = poor_silver,
-  strain_subj = as.integer((!is.na(endsmeet) & endsmeet <= 1) | (!is.na(liquidity) & liquidity == 0)),
   eqinc_tert  = cut(eqinc, quantile(eqinc, c(0,1/3,2/3,1), na.rm = TRUE),
                     labels = c("low","mid","high"), include.lowest = TRUE),
-  ## home value for imputed rent: amount -> category midpoint; owners w/o value -> owner median; non-owners 0
-  home_value  = ifelse(!is.na(realest_amt), realest_amt, realest_cat),
-  equiv_factor= ifelse(!is.na(eqinc) & eqinc > 0, hh_income / eqinc, NA_real_)  # hh_income / equiv income
+  equiv_factor= ifelse(!is.na(eqinc) & eqinc > 0, hh_income / eqinc, NA_real_),  # hh_income / eq income
+  ## --- rename: these two are SUBJECTIVE assessments (M5 only; never classify) --
+  suddenexp_subj = liquidity,                                   # can cover an unexpected expense (was `liquidity`)
+  ## --- wealth transforms (objective), explicit "missing" tertile level --------
+  wealth_fin_log = log1p(pmax(wealth_fin, 0)),
+  wealth_net_log = log1p(pmax(wealth_net, 0))
 )
+wq_fin <- quantile(d$wealth_fin, c(0,1/3,2/3,1), na.rm = TRUE)
+d$wealth_fin_tert <- cut(d$wealth_fin, wq_fin, labels = c("low","mid","high"), include.lowest = TRUE)
+d$wealth_fin_tert <- factor(ifelse(is.na(d$wealth_fin_tert), "missing", as.character(d$wealth_fin_tert)),
+                            levels = c("mid","low","high","missing"))
+wq_net <- quantile(d$wealth_net, c(0,1/3,2/3,1), na.rm = TRUE)
+d$wealth_net_tert <- cut(d$wealth_net, wq_net, labels = c("low","mid","high"), include.lowest = TRUE)
+d$wealth_net_tert <- factor(ifelse(is.na(d$wealth_net_tert), "missing", as.character(d$wealth_net_tert)),
+                            levels = c("mid","low","high","missing"))
 
-## finalise home value: owners with still-missing value -> weighted owner median;
-## non-owners -> 0 (imputed rent applies to the self-occupied home of owners)
-own_med <- median(d$home_value[d$owner == 1], na.rm = TRUE)
-d$home_value <- ifelse(d$owner == 1 & is.na(d$home_value), own_med,
-                       ifelse(d$owner == 0, 0, d$home_value))
+## --- HOME VALUE (owners): amount -> category -> median-of-no-other-RE owners --
+## D-HOMEVALUE-RE: owner, no other RE -> hh_wealth_re (= the home for them);
+## owner + other RE -> weighted median hh_wealth_re of the no-other-RE owners
+## (hh_wealth_re overstates the home when other RE exists). Non-owners -> 0.
+own_no_re <- d$tenure3 == "owner, no other RE" & !is.na(d$tenure3)
+own_re    <- d$tenure3 == "owner + other RE"  & !is.na(d$tenure3)
+home_src <- dplyr::case_when(
+  d$owner == 0                     ~ NA_character_,     # non-owner
+  own_re                           ~ "median",         # owner + other RE -> always median
+  !is.na(d$realest_amt)            ~ "amount",          # no-other-RE owner, reported amount
+  !is.na(d$realest_cat)            ~ "category",        # no-other-RE owner, category only
+  TRUE                             ~ "median")          # no-other-RE owner, neither reported
+wmed_home <- wmedian(d$wealth_re[own_no_re & d$wealth_re > 0], d$w[own_no_re & d$wealth_re > 0])
+d$home_value <- dplyr::case_when(
+  d$owner == 0            ~ 0,
+  home_src == "amount"    ~ d$realest_amt,
+  home_src == "category"  ~ d$realest_cat,
+  TRUE                    ~ wmed_home)                 # median fallback (owner+RE, or no report)
+## sensitivity variant (D-HOMEVALUE-RE off): owner + other RE keeps the FULL RE value
+d$home_value_full <- ifelse(own_re, d$wealth_re, d$home_value)
+logline(sprintf("home_value source among owners (n=%d): amount=%d, category=%d, median=%d (weighted median home = %s CHF)",
+        sum(d$owner == 1, na.rm = TRUE),
+        sum(home_src == "amount", na.rm = TRUE), sum(home_src == "category", na.rm = TRUE),
+        sum(home_src == "median", na.rm = TRUE), format(round(wmed_home), big.mark = "'")))
+
+## --- MORTGAGE amount, LTV, cost, burden (owners) -----------------------------
+## mortgage_amt = hh_mortgage; 0 for mortgage-free owners (fi_morgage_22 == 0).
+d$mortgage_amt <- dplyr::case_when(
+  d$owner == 0                                     ~ NA_real_,  # owner-only construct
+  d$mortgage == 0                                  ~ 0,          # owner, no mortgage
+  d$mortgage == 1 & !is.na(d$mortgage_silver)      ~ d$mortgage_silver,
+  TRUE                                             ~ NA_real_)   # owner, mortgage but amount unknown
+d$has_mortgage <- as.integer(d$mortgage_amt > 0)
+d$has_mortgage[d$owner == 0 & !is.na(d$owner)] <- 0L   # tenants: 0-for-tenants (model use)
+## cross-check vs the fi_morgage_22 yes/no flag; report disagreements
+disagree <- with(d, owner == 1 & !is.na(mortgage) & !is.na(has_mortgage) & mortgage != has_mortgage)
+unknown_amt <- with(d, owner == 1 & mortgage == 1 & is.na(mortgage_amt))
+logline(sprintf("mortgage: owners with flag==1 but unknown amount = %d (-> has_mortgage NA); flag vs amount disagreements = %d",
+        sum(unknown_amt, na.rm = TRUE), sum(disagree, na.rm = TRUE)))
+## loan-to-value (Belehnungsgrad), winsorised at 1.5; home_value>0 for all owners.
+## ltv = 0 for tenants (model 0-for-tenants, brief Step 3); NA for owners w/ unknown amount.
+d$ltv <- ifelse(d$owner == 1, pmin(d$mortgage_amt / d$home_value, 1.5),
+                ifelse(d$owner == 0 & !is.na(d$owner), 0, NA_real_))
+## ltv_cat is OWNER-ONLY (descriptive tab4/fig3): tenants NA
+d$ltv_cat <- factor(dplyr::case_when(
+  d$owner != 1 | is.na(d$owner) | is.na(d$ltv) ~ NA_character_,
+  d$ltv == 0        ~ "0",
+  d$ltv <= 0.33     ~ "(0,.33]",
+  d$ltv <= 0.66     ~ "(.33,.66]",
+  TRUE              ~ ">.66"),
+  levels = c("0","(0,.33]","(.33,.66]",">.66"))
+## monthly mortgage interest cost and burden (share of monthly hh income)
+d$mortgage_cost_m  <- d$mortgage_amt * MORTGAGE_RATE / 12
+d$mortgage_burden  <- ifelse(d$owner == 1 & !is.na(d$hh_income) & d$hh_income > 0,
+                             d$mortgage_cost_m / d$hh_income, NA_real_)
+d$mort_burden_15 <- as.integer(d$mortgage_burden > 0.15)
+d$mort_burden_30 <- as.integer(d$mortgage_burden > 0.30)
+
+## --- IMPUTED RENT (owners live rent-free): gross and net of mortgage cost ----
+d$imp_rent_m      <- NET_YIELD * d$home_value / 12
+d$imp_rent_net_m  <- pmax(d$imp_rent_m - ifelse(is.na(d$mortgage_cost_m), 0, d$mortgage_cost_m), 0)
+d$imp_rent_eq     <- ifelse(!is.na(d$equiv_factor) & d$equiv_factor > 0, d$imp_rent_m     / d$equiv_factor, NA_real_)
+d$imp_rent_net_eq <- ifelse(!is.na(d$equiv_factor) & d$equiv_factor > 0, d$imp_rent_net_m / d$equiv_factor, NA_real_)
+## non-owners: imputed rent is 0 (they pay market rent); keep eq versions 0 too
+d$imp_rent_eq[d$owner == 0]     <- 0
+d$imp_rent_net_eq[d$owner == 0] <- 0
 
 ## ---- restrict to 65+ and save ----------------------------------------------
 d65 <- d %>% filter(!is.na(age) & age >= 65)
 saveRDS(d65, "data/wohnen_working.rds")
 
 ## ---- n-table of analysis variables -----------------------------------------
-cat("\n=== analysis frame: 65+ ===  n =", nrow(d65), " (weighted design var `w`, strata `strata_22`)\n")
+logline(sprintf("analysis frame 65+: n = %d (weighted design var `w`, strata `strata_22`)", nrow(d65)))
+logline("tenure3: " , paste(names(table(d65$tenure3)), table(d65$tenure3), sep="=", collapse=", "))
+logline(sprintf("owners: has_mortgage=1 %d, mortgage-free %d, unknown %d",
+        sum(d65$has_mortgage == 1, na.rm = TRUE), sum(d65$has_mortgage == 0, na.rm = TRUE),
+        sum(d65$owner == 1 & is.na(d65$has_mortgage), na.rm = TRUE)))
+logline(sprintf("strain (silver income-poverty) among 65+: %d poor / %d total",
+        sum(d65$strain == 1, na.rm = TRUE), sum(!is.na(d65$strain))))
+logline(sprintf("home_value (owners, CHF): median %s | mortgage_amt (owners w/ mortgage): median %s | ltv (owners): median %.2f",
+        format(round(wmedian(d65$home_value[d65$owner==1], d65$w[d65$owner==1])), big.mark="'"),
+        format(round(wmedian(d65$mortgage_amt[d65$has_mortgage==1], d65$w[d65$has_mortgage==1])), big.mark="'"),
+        wmedian(d65$ltv[d65$owner==1], d65$w[d65$owner==1])))
 miss <- sapply(d65, function(x) sum(is.na(x)))
 cat("\nmissing per variable:\n"); print(miss)
 cat("\ntenure3:\n");   print(table(d65$tenure3, useNA = "ifany"))
-cat("owner:\n");       print(table(d65$owner, useNA = "ifany"))
-cat("strain (silver poverty):\n"); print(table(d65$strain, useNA = "ifany"))
-cat("strain_subj:\n"); print(table(d65$strain_subj, useNA = "ifany"))
+cat("ltv_cat (owners):\n"); print(table(d65$ltv_cat, useNA = "ifany"))
 cat("SWLS summary:\n");print(summary(d65$swls))
-cat("\nSaved data/wohnen_working.rds\n")
+logline("Saved data/wohnen_working.rds")
